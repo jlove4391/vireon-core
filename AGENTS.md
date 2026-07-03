@@ -264,3 +264,20 @@ If any verification step fails, report the failure clearly and do not present th
 If scope conflicts were discovered, report them clearly.
 
 If related work was discovered but not implemented, place it under `Recommended Next Steps`.
+
+## Doctrine Hierarchy
+
+When repository documents or project notes appear to conflict, apply this hierarchy:
+
+1. Active user implementation prompt
+2. Accepted ADRs
+3. AGENTS.md
+4. README.md
+5. /docs/architecture/*
+6. ELORA.md and NEXORA.md
+7. Roadmaps and refinement docs
+8. Vision, thesis, product, and long-horizon planning docs
+
+Vision documents describe direction. They do not authorize implementation.
+
+Proposed technologies, frameworks, or agent capabilities are not canonical until accepted in an ADR or explicitly scoped in the active prompt.
