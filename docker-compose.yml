@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      # POSTGRES_USER is the Postgres bootstrap superuser (initdb makes it
+      # a cluster superuser, which unconditionally bypasses row-level
+      # security). It is intentionally NOT the role DATABASE_URL connects
+      # as. docker/init/01-bootstrap-app-role.sql runs as this bootstrap
+      # user on first init and creates the non-superuser `vireon` role
+      # that the application actually uses -- see that file for why.
+      POSTGRES_USER: postgres_bootstrap
+      POSTGRES_PASSWORD: postgres_bootstrap
+      POSTGRES_DB: vireon_core
+    ports:
+      - "5432:5432"
+    volumes:
+      - vireon_postgres_data:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_bootstrap -d vireon_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7.4
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - vireon_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  vireon_postgres_data:
+  vireon_redis_data:
