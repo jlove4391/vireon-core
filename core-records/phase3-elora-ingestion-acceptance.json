@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "phase": "phase3_elora_v1",
+  "timestamp": "2026-07-12T06:25:44.169Z",
+  "tenant_id": "52ecc444-7336-49c8-ba6a-f0ff65f74e8a",
+  "thread_id": "7aa980f9-3fda-48e0-986d-cb3ccad4b7d7",
+  "message_id": "b082886b-2700-47b8-89f7-eba30fee0a6b",
+  "retrieved_memory_count": 0,
+  "intent_type": "work_order_candidate",
+  "work_order_id": "09292c90-5b3a-4459-aed7-d88530e5c64e",
+  "authority_decision_id": "7d9f0c80-dae1-46f3-a2c2-2bb61b08a731",
+  "authority_outcome": "act_and_report",
+  "final_work_order_status": "READY_TO_ACT",
+  "response_type": "direct_answer",
+  "action_receipt_id": "044fc93d-b319-458d-afac-dbc3df45c667",
+  "memory_candidate_ids": [
+    "30139366-9bf2-4967-8449-c9307a53989f"
+  ],
+  "transition_path": [
+    "RECEIVED",
+    "INTENT_PARSED",
+    "AUTHORITY_CLASSIFIED",
+    "READY_TO_ACT"
+  ],
+  "branch_tests": {
+    "ready_to_act": "passed",
+    "awaiting_authorization": "passed",
+    "setup_required": "passed",
+    "capability_missing": "passed",
+    "refused": "passed"
+  },
+  "duplicate_message_test_result": "passed",
+  "context_resolution_test_result": "passed",
+  "memory_retrieval_test_result": "passed",
+  "no_execution_test_result": "passed",
+  "no_approval_workflow_test_result": "passed",
+  "diagnostic_visibility_test_result": "passed"
+}

@@ -15,6 +15,7 @@
     "test:phase1:redis": "vitest run tests/integration/phase1.redis-connectivity.test.ts",
     "test:phase2": "vitest run tests/integration/phase2.state-machine-lifecycle.test.ts",
     "test:phase2.5": "vitest run tests/integration/phase2_5.diagnostics-console.test.ts",
+    "test:phase3": "vitest run tests/integration/phase3.elora-ingestion.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "diagnostics": "tsx tools/diagnostics/index.ts"
   },
