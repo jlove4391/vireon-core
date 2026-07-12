@@ -15,8 +15,16 @@ import { proposeMemoryCandidates } from "./proposeMemoryCandidates.js";
 import { resolveContext } from "./resolveContext.js";
 import { retrieveRelevantMemory, type RetrievedMemoryRecord } from "./retrieveRelevantMemory.js";
 import { synthesizeIngestionResponse } from "./synthesizeIngestionResponse.js";
-import type { EloraIngestionResult, EloraIngressInput, EloraStructuredIntent } from "./types.js";
+import { AUTHORITY_OUTCOME_TO_REASON_CODE, type EloraIngestionResult, type EloraIngressInput, type EloraStructuredIntent } from "./types.js";
+import { writeBlockedReceipt } from "./writeBlockedReceipt.js";
 import { writeEloraReceipt } from "./writeEloraReceipt.js";
+
+const BLOCKED_STATUSES: readonly WorkOrderStatus[] = [
+  "AWAITING_AUTHORIZATION",
+  "SETUP_REQUIRED",
+  "CAPABILITY_MISSING",
+  "REFUSED",
+];
 
 /**
  * A duplicate submission's createWorkOrder() call correctly insert-or-fetches
@@ -50,9 +58,11 @@ async function loadAlreadyProcessedResult(
     }
 
     const receiptResult = await client.query(
-      "SELECT id FROM action_receipts WHERE tenant_id = $1 AND work_order_id = $2 AND receipt_type = 'elora_ingestion_completed' LIMIT 1",
+      "SELECT id, receipt_type FROM action_receipts WHERE tenant_id = $1 AND work_order_id = $2 AND receipt_type IN ('elora_ingestion_completed', 'elora_request_blocked')",
       [tenantId, workOrder.id],
     );
+    const completedReceipt = receiptResult.rows.find((row) => row.receipt_type === "elora_ingestion_completed");
+    const blockedReceipt = receiptResult.rows.find((row) => row.receipt_type === "elora_request_blocked");
 
     const candidatesResult = await client.query(
       "SELECT id FROM memory_candidates WHERE tenant_id = $1 AND source_work_order_id = $2 ORDER BY created_at ASC",
@@ -60,13 +70,15 @@ async function loadAlreadyProcessedResult(
     );
 
     const finalStatus = WorkOrderStatusSchema.parse(workOrder.status);
+    const reconstructedOutcome = authorityOutcome ?? "act_and_report";
     const { responseType, responseText } = synthesizeIngestionResponse({
       finalWorkOrderStatus: finalStatus,
       intent,
       authority: {
-        outcome: authorityOutcome ?? "act_and_report",
+        outcome: reconstructedOutcome,
         requires_human_gatekeeper: false,
         reason: "Reconstructed from a previously processed, idempotent duplicate submission.",
+        reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE[reconstructedOutcome],
         risk_level: "low",
         required_setup: null,
       },
@@ -88,7 +100,8 @@ async function loadAlreadyProcessedResult(
       transitionPath,
       responseType,
       responseText,
-      actionReceiptId: (receiptResult.rows[0]?.id as string | undefined) ?? null,
+      actionReceiptId: (completedReceipt?.id as string | undefined) ?? null,
+      blockedReceiptId: (blockedReceipt?.id as string | undefined) ?? null,
       memoryCandidateIds: candidatesResult.rows.map((row) => row.id as string),
     };
   });
@@ -138,6 +151,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       responseType: "clarification_required",
       responseText: "I need more information to proceed with this request.",
       actionReceiptId: null,
+      blockedReceiptId: null,
       memoryCandidateIds: [],
     };
   }
@@ -210,6 +224,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
   });
 
   let actionReceiptId: string | null = null;
+  let blockedReceiptId: string | null = null;
   if (branched.workOrder.status === "READY_TO_ACT") {
     const receipt = await writeEloraReceipt({
       tenantId: context.tenantId,
@@ -220,6 +235,15 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       retrievedMemoryIds: retrievedMemory.map((record) => record.id),
     });
     actionReceiptId = receipt.id;
+  } else if (BLOCKED_STATUSES.includes(branched.workOrder.status)) {
+    const receipt = await writeBlockedReceipt({
+      tenantId: context.tenantId,
+      workOrderId: workOrder.id,
+      authorityDecisionId,
+      actorId: context.actorId,
+      responseText,
+    });
+    blockedReceiptId = receipt.id;
   }
 
   const memoryCandidates = await proposeMemoryCandidates({
@@ -245,6 +269,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     responseType,
     responseText,
     actionReceiptId,
+    blockedReceiptId,
     memoryCandidateIds: memoryCandidates.map((candidate) => candidate.id),
   };
 }

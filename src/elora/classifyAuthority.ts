@@ -1,4 +1,4 @@
-import type { EloraAuthorityClassification, EloraTaskType } from "./types.js";
+import { AUTHORITY_OUTCOME_TO_REASON_CODE, type EloraAuthorityClassification, type EloraTaskType } from "./types.js";
 
 export interface ClassifyAuthorityInput {
   content: string;
@@ -30,6 +30,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       outcome: "refuse",
       requires_human_gatekeeper: true,
       reason: "Request pattern matches a refused action (credential theft / exfiltration).",
+      reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.refuse,
       risk_level: "high",
       required_setup: null,
     };
@@ -40,6 +41,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       outcome: "capability_missing",
       requires_human_gatekeeper: false,
       reason: "Request requires physical-world capability (manufacturing/CAD/3D) the runtime does not have.",
+      reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.capability_missing,
       risk_level: "low",
       required_setup: null,
     };
@@ -50,6 +52,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       outcome: "escalate",
       requires_human_gatekeeper: true,
       reason: "Request involves an external side effect requiring authorization before proceeding.",
+      reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.escalate,
       risk_level: "high",
       required_setup: null,
     };
@@ -60,6 +63,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       outcome: "setup_required",
       requires_human_gatekeeper: false,
       reason: "Implementation task requires a project scope, and none was resolved for this request.",
+      reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.setup_required,
       risk_level: "medium",
       required_setup: "project_id",
     };
@@ -69,6 +73,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
     outcome: "act_and_report",
     requires_human_gatekeeper: false,
     reason: "Safe internal action (planning/drafting/analysis) with no external side effects.",
+    reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.act_and_report,
     risk_level: "low",
     required_setup: null,
   };
