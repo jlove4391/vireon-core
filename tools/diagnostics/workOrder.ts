@@ -197,7 +197,21 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
 // action_receipts remains the durable receipt anchor.
 // =============================================================================
 
-const TERMINAL_RECEIPT_TYPES = new Set(["elora_ingestion_completed", "elora_request_blocked"]);
+// Phase 5 §8.1/§8.2 added two more terminal receipt types alongside Phase
+// 3/4's elora_ingestion_completed / elora_request_blocked:
+// state_transitioned (the native VALIDATING -> RECEIPT_WRITTEN receipt,
+// written for the tool-execution success path) and run_failed (written for
+// the tool-execution failure path). Currently the only source of either
+// type is Phase 5's execution flow -- if a future phase writes
+// state_transitioned/run_failed receipts for an unrelated purpose, a
+// WorkOrder could carry more than one "terminal" candidate and this
+// .find() would need revisiting.
+const TERMINAL_RECEIPT_TYPES = new Set([
+  "elora_ingestion_completed",
+  "elora_request_blocked",
+  "state_transitioned",
+  "run_failed",
+]);
 
 export interface InspectableReceipt {
   receiptId: string;
@@ -234,8 +248,24 @@ export interface InspectableReceipt {
     reasonCode: string;
   };
 
-  /** Always empty in Phase 4 -- tool_invocations has never been written to by anything (§5/§2). Not a placeholder; this is correct. */
-  toolsUsed: [];
+  /**
+   * Phase 5 §14: genuine query against tool_invocations, not a hardcoded
+   * literal. Truthfulness rule (§14, unchanged): only calls made through
+   * the registered invocation gateway ever appear here -- ordinary
+   * function calls, repository methods, database writes, or any of the
+   * Phase 3/4 direct-call functions excluded from the registry (§4) are
+   * never inferred as tool usage.
+   */
+  toolsUsed: Array<{
+    invocationId: string;
+    toolName: string;
+    toolVersion: string;
+    status: string;
+    startedAt: string;
+    completedAt?: string;
+    outputReference?: { type: "artifact"; id: string };
+    error?: { code?: string; message: string };
+  }>;
 
   stateTransitions: Array<{
     from?: string;
@@ -342,7 +372,80 @@ export async function getInspectableReceipt(tenantId: string, workOrderId: strin
     ? AUTHORITY_OUTCOME_TO_REASON_CODE[authorityOutcomeSchema.parse(detail.authorityDecision.outcome)]
     : undefined;
 
-  const responseSummary = (receipt.payload.response_summary as string | undefined) ?? "";
+  // Phase 5 §14: genuine query against tool_invocations, tenant-scoped,
+  // same join-by-work_order_id pattern already used for
+  // action_receipts/memory_candidates inside getWorkOrderDetail().
+  const toolInvocationRows = await readOnlyTenantQuery(
+    async (client) => {
+      const result = await client.query(
+        `SELECT id, tool_identifier, tool_version, status, output_payload, error_payload, created_at, completed_at
+         FROM tool_invocations WHERE tenant_id = $1 AND work_order_id = $2 ORDER BY created_at ASC`,
+        [tenantId, workOrderId],
+      );
+      return result.rows as Record<string, unknown>[];
+    },
+    { tenantId },
+  );
+
+  const toolsUsed: InspectableReceipt["toolsUsed"] = toolInvocationRows.map((row) => {
+    const outputPayload = row.output_payload as { artifactId?: string } | null;
+    const errorPayload = row.error_payload as { code?: string; message: string } | null;
+    return {
+      invocationId: row.id as string,
+      toolName: row.tool_identifier as string,
+      toolVersion: row.tool_version as string,
+      status: row.status as string,
+      startedAt: toIso(row.created_at as string | Date) as string,
+      completedAt: row.completed_at ? (toIso(row.completed_at as string | Date) as string) : undefined,
+      outputReference: outputPayload?.artifactId ? { type: "artifact", id: outputPayload.artifactId } : undefined,
+      error: errorPayload ? { code: errorPayload.code, message: redactSecretLikeValues(errorPayload.message) } : undefined,
+    };
+  });
+
+  // Output/error projection varies by which terminal receipt type this is
+  // (§8.1/§8.2 added state_transitioned/run_failed alongside Phase 3/4's
+  // ELORA-authored receipt types, and neither carries a response_summary
+  // payload field the way elora_ingestion_completed/elora_request_blocked do).
+  let outputs: InspectableReceipt["outputs"] = [];
+  let errors: InspectableReceipt["errors"] = [];
+
+  if (receipt.receipt_type === "elora_ingestion_completed" || receipt.receipt_type === "elora_request_blocked") {
+    const responseSummary = (receipt.payload.response_summary as string | undefined) ?? "";
+    outputs = [
+      {
+        type: receipt.receipt_type === "elora_ingestion_completed" ? "direct_answer" : "blocked_explanation",
+        content: redactSecretLikeValues(responseSummary),
+      },
+    ];
+  } else if (receipt.receipt_type === "state_transitioned") {
+    const artifactRow = await readOnlyTenantQuery(
+      async (client) => {
+        const result = await client.query(
+          "SELECT id, storage_reference, mime_type, byte_count FROM artifacts WHERE tenant_id = $1 AND work_order_id = $2 ORDER BY created_at DESC LIMIT 1",
+          [tenantId, workOrderId],
+        );
+        return result.rows[0] as Record<string, unknown> | undefined;
+      },
+      { tenantId },
+    );
+    if (artifactRow) {
+      outputs = [
+        {
+          type: "artifact_created",
+          content: `${artifactRow.storage_reference as string} (${artifactRow.byte_count as number} bytes, ${artifactRow.mime_type as string})`,
+          referenceId: artifactRow.id as string,
+        },
+      ];
+    }
+  } else if (receipt.receipt_type === "run_failed") {
+    const payload = receipt.payload as { failure_type?: string; failure_message?: string };
+    errors = [
+      {
+        code: payload.failure_type,
+        message: redactSecretLikeValues(payload.failure_message ?? "Execution failed"),
+      },
+    ];
+  }
 
   return {
     receiptId: receipt.id,
@@ -362,19 +465,14 @@ export async function getInspectableReceipt(tenantId: string, workOrderId: strin
       reason: detail.authorityDecision?.reason ?? null,
       reasonCode: reasonCode ?? AUTHORITY_OUTCOME_TO_REASON_CODE.act_and_report,
     },
-    toolsUsed: [],
+    toolsUsed,
     stateTransitions: detail.transitions.map((t) => ({
       from: t.from_status ?? undefined,
       to: t.to_status,
       createdAt: t.created_at,
     })),
-    outputs: [
-      {
-        type: receipt.receipt_type === "elora_ingestion_completed" ? "direct_answer" : "blocked_explanation",
-        content: redactSecretLikeValues(responseSummary),
-      },
-    ],
-    errors: [],
+    outputs,
+    errors,
     memoryCandidates: detail.memoryCandidates.map((c) => ({
       id: c.id,
       status: c.review_status,
