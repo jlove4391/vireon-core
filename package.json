@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:phase1": "vitest run tests/integration/phase1.database-spine.test.ts",
     "test:phase1:redis": "vitest run tests/integration/phase1.redis-connectivity.test.ts",
+    "test:phase2": "vitest run tests/integration/phase2.state-machine-lifecycle.test.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {

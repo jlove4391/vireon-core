@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { uuidSchema } from "../shared/ids.js";
+import { WorkOrderStatusSchema } from "../state/workOrderState.js";
 
 export const workOrderSchema = z.object({
   id: uuidSchema,
@@ -11,8 +12,9 @@ export const workOrderSchema = z.object({
   owner_actor_id: uuidSchema.nullable().default(null),
   task_type: z.string().min(1),
   interpreted_intent: z.string().nullable().default(null),
-  status: z.string().min(1).default("pending"),
+  status: WorkOrderStatusSchema.default("RECEIVED"),
   idempotency_key: z.string().min(1),
+  authority_decision_id: uuidSchema.nullable().default(null),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
