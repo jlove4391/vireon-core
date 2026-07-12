@@ -14,7 +14,9 @@
     "test:phase1": "vitest run tests/integration/phase1.database-spine.test.ts",
     "test:phase1:redis": "vitest run tests/integration/phase1.redis-connectivity.test.ts",
     "test:phase2": "vitest run tests/integration/phase2.state-machine-lifecycle.test.ts",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "test:phase2.5": "vitest run tests/integration/phase2_5.diagnostics-console.test.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "diagnostics": "tsx tools/diagnostics/index.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

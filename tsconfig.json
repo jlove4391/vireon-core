@@ -15,6 +15,6 @@
     "noUncheckedIndexedAccess": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "test-utils"],
+  "include": ["src", "tests", "test-utils", "tools"],
   "exclude": ["node_modules", "dist"]
 }
