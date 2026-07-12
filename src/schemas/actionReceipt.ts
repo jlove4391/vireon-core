@@ -112,6 +112,21 @@ const receiptSupersededReceiptSchema = receiptBaseSchema.extend({
   }),
 });
 
+// Phase 3 -- ELORA's conversational ingestion action. Represents produced
+// work output (a direct answer), not execution -- must not be confused with
+// run_completed (no Run exists in Phase 3). Written directly by
+// src/elora/writeEloraReceipt.ts, independent of transitionWorkOrder()'s own
+// gated receipt-writing (which only fires on execution-phase transitions
+// Phase 3 never reaches).
+const eloraIngestionCompletedReceiptSchema = receiptBaseSchema.extend({
+  receipt_type: z.literal("elora_ingestion_completed"),
+  payload: z.object({
+    work_order_id: uuidSchema,
+    response_summary: z.string().min(1),
+    retrieved_memory_ids: z.array(uuidSchema),
+  }),
+});
+
 export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   workOrderCreatedReceiptSchema,
   authorityDecidedReceiptSchema,
@@ -124,6 +139,7 @@ export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   runCompletedReceiptSchema,
   receiptCorrectedReceiptSchema,
   receiptSupersededReceiptSchema,
+  eloraIngestionCompletedReceiptSchema,
 ]);
 
 export type ActionReceipt = z.infer<typeof actionReceiptSchema>;
