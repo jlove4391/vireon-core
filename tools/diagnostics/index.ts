@@ -63,6 +63,9 @@ async function run(): Promise<void> {
       const detail = await getWorkOrderDetail(tenantId, workOrderId);
       if (!detail) {
         console.log(`No WorkOrder ${workOrderId} found for tenant ${tenantId}.`);
+        console.log(
+          "If you expected a result, confirm you're using the correct tenant -- run 'pnpm diagnostics tenants' to check.",
+        );
         return;
       }
       printWorkOrderDetail(detail);
