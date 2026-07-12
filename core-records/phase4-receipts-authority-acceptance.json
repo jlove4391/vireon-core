@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "phase": "phase4_receipts_authority_v2",
+  "timestamp": "2026-07-12T14:29:12.629Z",
+  "tenant_id": "0267eb76-1753-494b-8e05-d90f66c90d7c",
+  "branch_work_order_ids": {
+    "act_and_report": "3491eed0-596c-40ff-a460-c5546f5aac68",
+    "escalate": "8135c9cc-bdd6-45d8-89d3-ceecaef4b46b",
+    "setup_required": "f6d0dcdb-da3a-4cb9-97ec-b4ebc8fe188b",
+    "capability_missing": "21dcb80b-8d57-4a7a-9113-d90b3160c026",
+    "refuse": "3206cb32-7a0f-48e1-bc83-834b53277fcb"
+  },
+  "branch_receipt_ids": {
+    "act_and_report": "e9b1bc0d-cd4c-4b3d-b810-311f1879ed0c",
+    "escalate": "5bf3bdd3-b8ab-43ba-b127-061ac8acf2cf",
+    "setup_required": "5c08af08-3b81-4b00-b149-8ef53df33a32",
+    "capability_missing": "2771b9c1-03ca-437a-9a27-0ad8f0345970",
+    "refuse": "4132f668-6e71-4482-88ae-de27a8469dbe"
+  },
+  "branch_tests": {
+    "act": "passed",
+    "act_and_report": "passed",
+    "escalate": "passed",
+    "setup_required": "passed",
+    "capability_missing": "passed",
+    "refuse": "passed"
+  },
+  "state_transition_integrity_test_result": "passed",
+  "no_inferred_tool_usage_test_result": "passed",
+  "receipt_completeness_test_result": "passed",
+  "isolation_and_sanitization_test_result": "passed"
+}

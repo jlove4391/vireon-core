@@ -127,6 +127,23 @@ const eloraIngestionCompletedReceiptSchema = receiptBaseSchema.extend({
   }),
 });
 
+// Phase 4 -- covers all four blocked authority branches (escalate,
+// setup_required, capability_missing, refuse) uniformly. Reusing
+// elora_ingestion_completed would be semantically wrong (nothing was
+// completed on a blocked request); four separate new types would be
+// unnecessary taxonomy sprawl, since the specific reason is already fully
+// captured one join away via the linked AuthorityDecision.outcome
+// (action_receipts.authority_decision_id). Written directly by
+// src/elora/writeBlockedReceipt.ts, same direct-call pattern as
+// writeEloraReceipt.ts.
+const eloraRequestBlockedReceiptSchema = receiptBaseSchema.extend({
+  receipt_type: z.literal("elora_request_blocked"),
+  payload: z.object({
+    work_order_id: uuidSchema,
+    response_summary: z.string().min(1),
+  }),
+});
+
 export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   workOrderCreatedReceiptSchema,
   authorityDecidedReceiptSchema,
@@ -140,6 +157,7 @@ export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   receiptCorrectedReceiptSchema,
   receiptSupersededReceiptSchema,
   eloraIngestionCompletedReceiptSchema,
+  eloraRequestBlockedReceiptSchema,
 ]);
 
 export type ActionReceipt = z.infer<typeof actionReceiptSchema>;

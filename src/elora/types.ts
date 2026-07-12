@@ -53,10 +53,35 @@ export interface EloraStructuredIntent {
   summary: string;
 }
 
+/**
+ * Phase 4 §6: a single machine-readable code, one per outcome, for stable
+ * branching independent of the free-text `reason` string. Not a persisted
+ * column -- it's a pure function of `outcome` (AUTHORITY_OUTCOME_TO_REASON_CODE
+ * below), so it's derivable at read time from the already-persisted
+ * authority_decisions.outcome column without a migration.
+ */
+export type AuthorityReasonCode =
+  | "WITHIN_CURRENT_AUTHORITY"
+  | "REPORT_REQUIRED"
+  | "AUTHORIZATION_REQUIRED"
+  | "CONFIGURATION_REQUIRED"
+  | "CAPABILITY_UNAVAILABLE"
+  | "GOVERNING_BOUNDARY";
+
+export const AUTHORITY_OUTCOME_TO_REASON_CODE: Readonly<Record<AuthorityOutcome, AuthorityReasonCode>> = {
+  act: "WITHIN_CURRENT_AUTHORITY",
+  act_and_report: "REPORT_REQUIRED",
+  escalate: "AUTHORIZATION_REQUIRED",
+  setup_required: "CONFIGURATION_REQUIRED",
+  capability_missing: "CAPABILITY_UNAVAILABLE",
+  refuse: "GOVERNING_BOUNDARY",
+};
+
 export interface EloraAuthorityClassification {
   outcome: AuthorityOutcome;
   requires_human_gatekeeper: boolean;
   reason: string;
+  reasonCode: AuthorityReasonCode;
   risk_level: "low" | "medium" | "high";
   required_setup: string | null;
 }
@@ -84,6 +109,9 @@ export interface EloraIngestionResult {
   transitionPath: WorkOrderStatus[];
   responseType: EloraResponseType;
   responseText: string;
+  /** elora_ingestion_completed receipt id -- only set on the READY_TO_ACT happy path (Phase 3, unchanged). */
   actionReceiptId: string | null;
+  /** elora_request_blocked receipt id -- only set on the four blocked branches (Phase 4 §4.2/§7). */
+  blockedReceiptId: string | null;
   memoryCandidateIds: string[];
 }
