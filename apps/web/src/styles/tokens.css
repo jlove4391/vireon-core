@@ -1,0 +1,33 @@
+@theme {
+  /* base surface + text */
+  --color-shell-bg: #0b0f14;
+  --color-text-primary: #dce3ea;
+  --color-text-secondary: #d9d9d9;
+
+  /* accent palette -- cyan/violet are the workhorse interactive pair */
+  --color-accent-cyan: #03b0c6;
+  --color-accent-cyan-glow: #7fd8ea;
+  --color-accent-blue: #0c4ca6; /* ambient/background glow only, not interactive elements */
+  --color-accent-blue-glow: #a1d9ff;
+  --color-accent-violet: #8c53d9;
+  --color-accent-violet-glow: #b770ff;
+  --color-accent-pink: #e975de; /* rare accent, not a peer of cyan/violet -- emphasis only */
+
+  /* typography */
+  --font-heading: "Manrope", sans-serif;
+  --font-body: "Poppins", sans-serif;
+  --text-hero: 2.94rem;
+  --text-lead: 1.43rem;
+  --text-body: 1rem;
+  --tracking-hero: -0.02em;
+
+  /* real interactive chrome -- rounded, glowing, gradient-bordered (the illustrated language) */
+  --radius-panel: 16px;
+  --radius-button: 12px;
+  --shadow-glow-cyan: 0 0 24px color-mix(in srgb, var(--color-accent-cyan) 35%, transparent);
+  --shadow-glow-violet: 0 0 24px color-mix(in srgb, var(--color-accent-violet) 35%, transparent);
+
+  /* flat/secondary chrome -- used sparingly, not as the dominant style */
+  --radius-flat: 0px;
+  --shadow-flat: none;
+}
