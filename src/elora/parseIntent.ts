@@ -12,6 +12,12 @@ const TASK_TYPE_CUES: ReadonlyArray<{ taskType: EloraTaskType; pattern: RegExp }
 
 const ACTIONABLE_CUE = /\b(help me|create|build|send|deploy|implement|analyz|write|make|do|steal|manufactur)\b/i;
 
+// Phase 5 §10: one narrow, deterministic pattern for explicit local
+// Markdown creation requests -- structured extraction via capture groups,
+// not general NLU. Checked before the generic task-type cues below since a
+// specific structural match takes priority over a categorical one.
+const ARTIFACT_CREATION_PATTERN = /create a local markdown artifact named (\S+\.md) containing:?\s*([\s\S]+)/i;
+
 /**
  * intent_type only ever resolves to work_order_candidate or informational
  * in Phase 3. clarification_required / setup_required / capability_missing
@@ -19,6 +25,19 @@ const ACTIONABLE_CUE = /\b(help me|create|build|send|deploy|implement|analyz|wri
  * classifyAuthority.ts is the sole owner of those branches here (§5.1).
  */
 export function parseIntent(content: string): EloraStructuredIntent {
+  const artifactMatch = ARTIFACT_CREATION_PATTERN.exec(content);
+  if (artifactMatch) {
+    const [, filename, artifactContent] = artifactMatch;
+    return {
+      intent_type: "work_order_candidate",
+      task_type: "artifact_creation",
+      confidence: 0.95,
+      requires_clarification: false,
+      summary: content.slice(0, 200),
+      artifactRequest: { filename: filename!.trim(), content: artifactContent!.trim() },
+    };
+  }
+
   const taskTypeMatch = TASK_TYPE_CUES.find((cue) => cue.pattern.test(content));
   const taskType: EloraTaskType = taskTypeMatch?.taskType ?? "unknown";
   const isActionable = ACTIONABLE_CUE.test(content);

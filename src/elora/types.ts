@@ -43,7 +43,14 @@ export type EloraIntentType =
   | "capability_missing"
   | "refusal_required";
 
-export type EloraTaskType = "planning" | "documentation" | "analysis" | "memory" | "implementation" | "unknown";
+export type EloraTaskType =
+  | "planning"
+  | "documentation"
+  | "analysis"
+  | "memory"
+  | "implementation"
+  | "artifact_creation"
+  | "unknown";
 
 export interface EloraStructuredIntent {
   intent_type: EloraIntentType;
@@ -51,6 +58,8 @@ export interface EloraStructuredIntent {
   confidence: number;
   requires_clarification: boolean;
   summary: string;
+  /** Set only when task_type === "artifact_creation" (Phase 5 §10) -- structured extraction, not general NLU. */
+  artifactRequest?: { filename: string; content: string };
 }
 
 /**
@@ -92,7 +101,9 @@ export type EloraResponseType =
   | "setup_required"
   | "capability_missing"
   | "refused"
-  | "clarification_required";
+  | "clarification_required"
+  /** Phase 5 §8.2: a dispatched tool invocation failed (EXECUTING -> FAILED). */
+  | "execution_failed";
 
 export interface EloraIngestionResult {
   tenantId: string;
@@ -109,9 +120,13 @@ export interface EloraIngestionResult {
   transitionPath: WorkOrderStatus[];
   responseType: EloraResponseType;
   responseText: string;
-  /** elora_ingestion_completed receipt id -- only set on the READY_TO_ACT happy path (Phase 3, unchanged). */
+  /** elora_ingestion_completed receipt id -- only set on the non-execution READY_TO_ACT happy path (Phase 3, unchanged). */
   actionReceiptId: string | null;
   /** elora_request_blocked receipt id -- only set on the four blocked branches (Phase 4 §4.2/§7). */
   blockedReceiptId: string | null;
+  /** Phase 5 §8: set only when a registered tool was actually invoked through the gateway. */
+  toolInvocationId: string | null;
+  /** Phase 5 §11.3: set only when core.artifact.write succeeded. */
+  artifactId: string | null;
   memoryCandidateIds: string[];
 }
