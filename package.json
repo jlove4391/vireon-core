@@ -18,9 +18,11 @@
     "test:phase3": "vitest run tests/integration/phase3.elora-ingestion.test.ts",
     "test:phase4": "vitest run tests/integration/phase4.receipts-authority.test.ts",
     "test:phase5": "vitest run tests/integration/phase5.tool-registry.test.ts",
+    "test:phase6b": "vitest run tests/integration/phase6b.authority-hierarchy.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "diagnostics": "tsx tools/diagnostics/index.ts",
     "seed:dev-identity": "tsx scripts/seedDevIdentity.ts",
+    "seed:persona-roster": "tsx scripts/seedPersonaRoster.ts",
     "dev:server": "tsx watch src/http/server.ts"
   },
   "dependencies": {
