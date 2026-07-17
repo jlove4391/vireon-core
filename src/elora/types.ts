@@ -93,6 +93,14 @@ export interface EloraAuthorityClassification {
   reasonCode: AuthorityReasonCode;
   risk_level: "low" | "medium" | "high";
   required_setup: string | null;
+  /**
+   * Phase 6C §4.2: true only for the floor-protected escalate branch (RMT /
+   * sensitive-data / irreversible-action cues). Never eligible for silent
+   * resolution via a standing authorization, regardless of what rules exist
+   * -- see AUTHORITY_AND_DELEGATION.md §5. Meaningless outside
+   * outcome === "escalate"; every other branch sets it false.
+   */
+  floorProtected: boolean;
 }
 
 export type EloraResponseType =
