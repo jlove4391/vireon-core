@@ -127,6 +127,11 @@ A state transition should record:
 
 Authority decisions are risk-based.
 
+See `/AUTHORITY_AND_DELEGATION.md` for the vertical authority hierarchy (Sovereign
+→ Elora → Inner Circle → Outer Circle / Special Envoys), the standing-authorization
+mechanism, and the hybrid floor. That document is schema and policy doctrine only —
+as of Phase 6B nothing in the runtime resolves against it yet.
+
 Supported authority outcomes are:
 
 * `act`

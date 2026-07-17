@@ -57,6 +57,7 @@ To maintain high velocity and enforce zero tolerance for avoidable technical deb
 * `/AGENTS.md` ➔ Rules for AI coding agents operating in this repository.
 * `/ELORA.md` ➔ ELORA runtime definition, ingestion boundaries, executive interface responsibilities, and delegation rules.
 * `/NEXORA.md` ➔ Nexora runtime definition, workspace execution boundaries, patching rules, and validation responsibilities.
+* `/AUTHORITY_AND_DELEGATION.md` ➔ Vertical authority hierarchy, standing-authorization mechanism, and the hybrid floor that governs every persona actor.
 * `/docs/architecture/core-runtime.md` ➔ Detailed CORE runtime architecture, state model, authority model, receipt model, and execution spine.
 * `/docs/adr/0001-ground-zero-architecture.md` ➔ Architecture Decision Record for the ground-zero modular monolith.
 
