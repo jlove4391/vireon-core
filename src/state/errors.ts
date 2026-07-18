@@ -50,6 +50,14 @@ export class WorkOrderNotFoundError extends Error {
 // rows, but AGENTS.md/ADR 0001 treat tenant isolation as a runtime
 // invariant, not merely an RLS backstop -- so transitionWorkOrder asserts it
 // explicitly rather than trusting RLS alone.
+/** Phase 6D: raised when writeDelegationReceipt.ts fails to persist the agent_delegated receipt. */
+export class DelegationReceiptWriteError extends Error {
+  constructor(reason: string) {
+    super(`Failed to write delegation receipt: ${reason}`);
+    this.name = "DelegationReceiptWriteError";
+  }
+}
+
 export class TenantScopeViolationError extends Error {
   constructor(
     public readonly workOrderId: string,

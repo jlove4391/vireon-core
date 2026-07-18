@@ -14,6 +14,9 @@ export interface WorkOrderRow {
   authority_decision_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Phase 6D: set only on a WorkOrder created via delegation. */
+  parent_work_order_id: string | null;
+  delegation_mode: string | null;
 }
 
 export interface TransitionRow {
@@ -149,6 +152,8 @@ export async function getWorkOrderDetail(tenantId: string, workOrderId: string):
           authority_decision_id: workOrderRow.authority_decision_id as string | null,
           created_at: toIso(workOrderRow.created_at as string | Date) as string,
           updated_at: toIso(workOrderRow.updated_at as string | Date) as string,
+          parent_work_order_id: workOrderRow.parent_work_order_id as string | null,
+          delegation_mode: workOrderRow.delegation_mode as string | null,
         },
         transitions: transitionsResult.rows.map((row) => ({
           id: row.id as string,
@@ -217,10 +222,33 @@ export interface InspectableReceipt {
   receiptId: string;
   workOrderId: string;
 
+  /**
+   * Phase 6D: set only when this WorkOrder was created via delegation
+   * (work_orders.parent_work_order_id). Null on every ordinary WorkOrder.
+   * A delegated child correctly reuses its parent's thread/message --
+   * "context inheritance by reference" per core-runtime.md §11.2 -- so
+   * this is the signal that originalRequest below, if present, belongs to
+   * the parent, not this WorkOrder's own request.
+   */
+  delegatedFrom: {
+    parentWorkOrderId: string;
+    delegationMode: string | null;
+  } | null;
+
   originalRequest: {
     messageId: string;
     content: string;
     createdAt: string;
+    /**
+     * Phase 6D: true when this WorkOrder is a delegated child. The message
+     * shown here is the parent's original user request, inherited by
+     * reference, not a request this WorkOrder itself received -- never
+     * present it as the child's own without this label. interpretedIntent
+     * below is the primary "what is this about" signal for a delegated
+     * child (see AUTHORITY_AND_DELEGATION.md's delegated-child-identity
+     * note); this field is supplementary context, clearly attributed.
+     */
+    inheritedFromParent: boolean;
   } | null;
 
   /**
@@ -347,24 +375,36 @@ export async function getInspectableReceipt(tenantId: string, workOrderId: strin
     return null;
   }
 
+  const delegatedFrom: InspectableReceipt["delegatedFrom"] = detail.workOrder.parent_work_order_id
+    ? {
+        parentWorkOrderId: detail.workOrder.parent_work_order_id,
+        delegationMode: detail.workOrder.delegation_mode,
+      }
+    : null;
+
   let originalRequest: InspectableReceipt["originalRequest"] = null;
   if (detail.workOrder.message_id) {
-    originalRequest = await readOnlyTenantQuery(
+    const messageRow = await readOnlyTenantQuery(
       async (client) => {
         const result = await client.query("SELECT id, content, created_at FROM messages WHERE id = $1 AND tenant_id = $2", [
           detail.workOrder.message_id,
           tenantId,
         ]);
-        const row = result.rows[0] as { id: string; content: string; created_at: string | Date } | undefined;
-        if (!row) return null;
-        return {
-          messageId: row.id,
-          content: redactSecretLikeValues(row.content),
-          createdAt: toIso(row.created_at) as string,
-        };
+        return result.rows[0] as { id: string; content: string; created_at: string | Date } | undefined;
       },
       { tenantId },
     );
+    if (messageRow) {
+      originalRequest = {
+        messageId: messageRow.id,
+        content: redactSecretLikeValues(messageRow.content),
+        createdAt: toIso(messageRow.created_at) as string,
+        // Phase 6D: a delegated child WorkOrder reuses its parent's
+        // thread/message by reference (core-runtime.md §11.2), so this
+        // content is never the child's own request when delegatedFrom is set.
+        inheritedFromParent: delegatedFrom !== null,
+      };
+    }
   }
 
   const outcome = detail.authorityDecision?.outcome ?? "act_and_report";
@@ -450,6 +490,7 @@ export async function getInspectableReceipt(tenantId: string, workOrderId: strin
   return {
     receiptId: receipt.id,
     workOrderId: detail.workOrder.id,
+    delegatedFrom,
     originalRequest,
     interpretedIntent: {
       summary: detail.workOrder.interpreted_intent,

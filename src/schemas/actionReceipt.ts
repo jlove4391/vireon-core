@@ -54,12 +54,21 @@ const toolInvokedReceiptSchema = receiptBaseSchema.extend({
   }),
 });
 
+// Phase 6D: work_order_id is the child WorkOrder created by the delegation
+// (matches work_order_created's own convention of referencing the entity
+// that was just created); parent_work_order_id and delegation_mode are
+// additive so the receipt documents the full link, not just who was
+// involved. reason is a human-readable note -- genuinely useful to read,
+// not just the four IDs.
 const agentDelegatedReceiptSchema = receiptBaseSchema.extend({
   receipt_type: z.literal("agent_delegated"),
   payload: z.object({
     parent_actor_id: z.string().min(1),
     child_actor_id: z.string().min(1),
     work_order_id: uuidSchema,
+    parent_work_order_id: uuidSchema,
+    delegation_mode: z.enum(["supervised", "peer"]),
+    reason: z.string().min(1),
   }),
 });
 
