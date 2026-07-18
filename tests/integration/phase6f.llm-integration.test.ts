@@ -165,6 +165,12 @@ describe("Phase 6F: real pipeline wiring -- ordering and fallback, via mocked An
     await pool.end();
   });
 
+  // Save/restore, not delete-unconditionally: this file may run in an
+  // environment with a real ANTHROPIC_API_KEY already set (the optional
+  // real-model describe block below needs it) -- earlier tests here must
+  // not permanently wipe it out from under later ones in the same file.
+  const originalApiKey = process.env.ANTHROPIC_API_KEY;
+
   beforeEach(() => {
     mockState.calls = [];
     mockState.behavior = "success";
@@ -172,7 +178,11 @@ describe("Phase 6F: real pipeline wiring -- ordering and fallback, via mocked An
   });
 
   afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY;
+    if (originalApiKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY;
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalApiKey;
+    }
     delete process.env.ELORA_LLM_DISABLED;
   });
 
@@ -297,9 +307,11 @@ describe("Phase 6F: real pipeline wiring -- ordering and fallback, via mocked An
   });
 
   it("1. no ANTHROPIC_API_KEY set: pipeline behaves exactly as the pre-6F deterministic path (mock never invoked)", async () => {
-    // ANTHROPIC_API_KEY intentionally left unset for this one (afterEach
-    // already deleted it) -- proves 6F is behavior-preserving by default,
+    // Explicitly unset for this one, regardless of whatever this
+    // environment's real value is (afterEach restores it afterward) --
+    // proves 6F is behavior-preserving by default when no key is present,
     // same property 6C established for standing rules.
+    delete process.env.ANTHROPIC_API_KEY;
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
