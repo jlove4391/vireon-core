@@ -1131,6 +1131,18 @@ The CORE runtime only defines generic delegation mechanics:
 - return receipt
 - completion status
 
+### 11.6 Reconciled with Peer (Horizontal) Delegation — Phase 6D
+
+The model described in §11.1–11.5 above is implemented as the `'supervised'` mode
+of a shared delegation mechanism (`work_orders.parent_work_order_id` /
+`delegation_mode`, migration `0006_delegation.sql`) that also supports a `'peer'`
+(horizontal) mode: structural peers routing work to each other with no authority
+relationship, resolved under the receiver's own independent scope rather than the
+delegator's. Both modes create a linked child WorkOrder and produce an
+`agent_delegated` receipt; neither yet implements real blocking/yield-resume
+behavior. See `/AUTHORITY_AND_DELEGATION.md` §6 for the full model — this note is a
+cross-reference, not a duplicate of that doctrine.
+
 ## 12. Tenant and Workspace Boundaries
 
 CORE must maintain strict logical isolation across tenants, workspaces, projects, and users.

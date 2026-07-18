@@ -3,12 +3,13 @@ Authority Hierarchy and Delegation Doctrine
 
 Document: /AUTHORITY_AND_DELEGATION.md
 Project: Vireon CORE
-Status: Draft v1 (Phase 6B — schema and policy)
-Date: 2026-07-17
+Status: Draft v2 (Phase 6B hierarchy/standing-authorization + Phase 6D delegation)
+Date: 2026-07-18
 
 Doctrine document for the vertical authority hierarchy and standing-authorization
-mechanism introduced in Phase 6B. Governs the model that peer-to-peer delegation
-(Phase 6D) will later inherit; it does not itself define delegation.
+mechanism (Phase 6B), the authority resolution engine's policy (Phase 6C, engine
+built in `src/elora/resolveAuthorityWithHierarchy.ts`), and the delegation
+mechanism (Phase 6D) reconciling vertical and peer delegation as one primitive.
 
 ## 1. Purpose
 
@@ -140,20 +141,63 @@ behavior, never loosen it below the floor.** A refusal-polarity rule can turn an
 `escalate` into a `refuse`. No rule of either polarity can turn a floor-mandated
 `refuse` or `escalate` into anything more permissive.
 
-## 6. Scope of This Document
+## 6. Delegation — Supervised and Peer
 
-This document defines the hierarchy's structure and the standing-authorization
-mechanism's policy. It deliberately does **not** cover, and no implementing agent
-should infer behavior for, the following — each is scoped to its own later phase:
+Two mechanisms that were designed separately turn out to share enough structure to
+be one shared primitive rather than two separate systems: `docs/architecture/core-runtime.md`
+§11's pre-existing "Agent Delegation Model" doctrine (a superior handing an actual
+unit of work down to a subordinate), and the "peer-to-peer delegation" concept from
+the authority-model interview (horizontal routing between structural peers, where
+neither delegates authority to the other). Both create a linked child WorkOrder
+(`work_orders.parent_work_order_id`) and produce an `agent_delegated` receipt. The
+schema distinguishes them via `work_orders.delegation_mode`, deliberately not named
+"vertical"/"horizontal" at the schema layer:
 
-- **Peer-to-peer delegation** (horizontal, actor-to-actor, including the WorkOrder
-  co-owner field) — Phase 6D.
-- **The authority resolution engine** — walking the hierarchy, resolving standing
-  rules against a live request, and enforcing the floor at runtime — Phase 6C.
+- **`'supervised'` (vertical).** The delegator has real hierarchical standing over
+  the receiver, per §2's reporting chain — e.g. ELORA (executive) delegating to
+  Nexora, once Nexora exists as a live actor. The receiver's authority for the
+  delegated work is *intended* to be bounded by what the delegator themselves
+  holds. **This bounding is not yet enforced.** `work_orders.delegated_authority_scope_note`
+  is a free-text schema hook for a future phase to populate once a persona's actual
+  positive authority scope exists to check against (Tier 2/3, unbuilt) — it is not
+  validated or matched against anything today.
+- **`'peer'` (horizontal).** The delegator and receiver are structural peers, with
+  no authority relationship between them — e.g. Jynx routing work to Cassian. The
+  receiver resolves the delegated work entirely under their own independent
+  authority scope. No inheritance, no bounding, nothing to enforce by construction.
+
+Neither mode currently implements real blocking or yield/resume behavior — a
+delegating actor cannot yet actually pause and wait for the child WorkOrder to
+complete. This is explicitly deferred, not silently missing: it requires a live
+pipeline that actually needs to block, which is naturally whenever Nexora's (or
+Kaz's, or Jynx's) real execution capability exists. Real authority-bounding
+enforcement for the `'supervised'` mode has the same deferral — both wait on a live
+decision-maker this phase does not build.
+
+See `docs/architecture/core-runtime.md` §11 for the original generic delegation
+mechanics (parent/child actor, delegated WorkOrder, context inheritance, yield/resume
+state, return receipt) that `'supervised'` mode implements; that section now
+cross-references here rather than duplicating this doctrine.
+
+## 7. Scope of This Document
+
+This document defines the hierarchy's structure, the standing-authorization
+mechanism's policy, and the delegation mechanism's policy. It deliberately does
+**not** cover, and no implementing agent should infer behavior for, the following —
+each is scoped to its own later phase:
+
+- **The authority resolution engine's runtime behavior** is built (Phase 6C,
+  `src/elora/resolveAuthorityWithHierarchy.ts`) — walking the hierarchy and
+  resolving standing rules against a live request. What remains unbuilt: enforcing
+  that `authority_standing_rules.confirmed_by_actor_id` actually resolves to the
+  Sovereign (documented in §3, not enforced at any layer yet).
 - **Each persona's specific positive authority scope** — what Elora, or any Chief,
   Lieutenant, or Special Envoy, is actually granted — Tier 2/3, not this phase.
+- **Real delegation blocking/yield-resume and supervised-mode authority-bounding
+  enforcement** — see §6 above; deferred to whichever future phase has a live
+  pipeline that actually needs them.
 
-## 7. Deferred: The Swarm Layer
+## 8. Deferred: The Swarm Layer
 
 `hierarchy_tier` includes `'swarm'` in its CHECK constraint for schema
 completeness. This is intentional future work, not a forgotten layer — the same

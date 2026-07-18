@@ -13,6 +13,10 @@ export interface CreateWorkOrderInput {
   ownerActorId?: string | null;
   taskType: string;
   interpretedIntent?: string | null;
+  /** Phase 6D: set only on a child WorkOrder created via delegation. */
+  parentWorkOrderId?: string | null;
+  /** Phase 6D: 'supervised' (vertical, delegator has real standing) or 'peer' (horizontal, no authority relationship). Null on every non-delegated WorkOrder. */
+  delegationMode?: "supervised" | "peer" | null;
 }
 
 export interface WorkOrderStateTransitionRecord {
@@ -106,8 +110,9 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Crea
     const insertResult = await client.query(
       `INSERT INTO work_orders
          (id, tenant_id, workspace_id, project_id, thread_id, message_id, owner_actor_id,
-          task_type, interpreted_intent, status, idempotency_key, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'RECEIVED',$10,$11,$11)
+          task_type, interpreted_intent, status, idempotency_key, created_at, updated_at,
+          parent_work_order_id, delegation_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'RECEIVED',$10,$11,$11,$12,$13)
        ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
        RETURNING *`,
       [
@@ -122,6 +127,8 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Crea
         input.interpretedIntent ?? null,
         idempotencyKey,
         now,
+        input.parentWorkOrderId ?? null,
+        input.delegationMode ?? null,
       ],
     );
 
