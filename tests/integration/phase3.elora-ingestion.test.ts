@@ -9,6 +9,7 @@ import { EloraError } from "../../src/elora/errors.js";
 import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { getWorkOrderDetail } from "../../tools/diagnostics/workOrder.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
+import { ensureDeterministicLlmPath } from "../../test-utils/ensureDeterministicLlmPath.js";
 
 type TestOutcome = "passed" | "failed";
 
@@ -53,6 +54,14 @@ async function getAuthorityDecisionGatekeeperFlag(tenantId: string, authorityDec
 }
 
 describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
+  // This suite asserts exact substrings of ingestUserMessage()'s
+  // deterministic response-text templates (produceDirectAnswer.ts /
+  // synthesizeIngestionResponse.ts's blocked-branch text) -- those
+  // assertions are only meaningful when the deterministic fallback path is
+  // actually what ran. Guarantees that regardless of whether
+  // ANTHROPIC_API_KEY happens to be set in the ambient environment.
+  ensureDeterministicLlmPath();
+
   let ctx: SeededContext;
 
   let readyToActResult: Awaited<ReturnType<typeof ingestUserMessage>>;
