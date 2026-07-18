@@ -12,6 +12,8 @@ import { isToolRegistered } from "../tools/registry.js";
 import { registerCoreTools } from "../tools/index.js";
 import { dispatchTool } from "./dispatchTool.js";
 import { EloraPersonaActorNotFoundError } from "./errors.js";
+import { generateEloraResponse } from "./generateEloraResponse.js";
+import { ELORA_VOICE_PROFILE } from "./llm/personaVoiceProfiles.js";
 import { normalizeIngress } from "./normalizeIngress.js";
 import { persistMessage } from "./persistMessage.js";
 import { parseIntent } from "./parseIntent.js";
@@ -332,9 +334,31 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     transitionPath.push(...executionResult.transitionPath);
     toolInvocationId = executionResult.toolInvocationId;
     artifactId = executionResult.artifactId;
-    responseText = executionResult.responseText;
     responseType = executionResult.finalStatus === "COMPLETED" ? "direct_answer" : "execution_failed";
     memoryCandidateIds = executionResult.memoryCandidateIds;
+
+    // Phase 6F §5.1: called only after runToolExecution() has already
+    // finalized the branch status (EXECUTING -> VALIDATING -> RECEIPT_WRITTEN
+    // -> COMPLETED, or -> FAILED) -- the LLM narrates an already-decided
+    // outcome, never something still in progress. executionResult.responseText
+    // (runToolExecution.ts's own unmodified template) is the deterministic
+    // fallback, not deleted, just no longer always the final answer.
+    responseText = await generateEloraResponse({
+      deterministicFallback: executionResult.responseText,
+      context: {
+        persona: ELORA_VOICE_PROFILE,
+        userMessageContent: persisted.content,
+        taskType: intent.task_type,
+        authorityOutcome: authority.outcome,
+        reason: authority.reason,
+        finalWorkOrderStatus: executionResult.finalStatus,
+        toolResult:
+          executionResult.finalStatus === "COMPLETED"
+            ? { toolName: dispatched.toolName, artifactFilename: intent.artifactRequest?.filename }
+            : null,
+        retrievedMemorySnippets: retrievedMemory.map((record) => record.content.slice(0, 200)),
+      },
+    });
   } else {
     const synthesized = synthesizeIngestionResponse({
       finalWorkOrderStatus: branched.workOrder.status,
@@ -343,7 +367,27 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       retrievedMemory,
     });
     responseType = synthesized.responseType;
-    responseText = synthesized.responseText;
+
+    // Phase 6F §5.1: called only after the AUTHORITY_CLASSIFIED -> {branch}
+    // transition above has already completed -- branched.workOrder.status
+    // is an already-decided fact to narrate, never something in progress.
+    // synthesized.responseText (synthesizeIngestionResponse.ts's own
+    // unmodified templates, covering READY_TO_ACT via produceDirectAnswer.ts
+    // and the four blocked branches via its own inline text) is the
+    // deterministic fallback.
+    responseText = await generateEloraResponse({
+      deterministicFallback: synthesized.responseText,
+      context: {
+        persona: ELORA_VOICE_PROFILE,
+        userMessageContent: persisted.content,
+        taskType: intent.task_type,
+        authorityOutcome: authority.outcome,
+        reason: authority.reason,
+        finalWorkOrderStatus: branched.workOrder.status,
+        toolResult: null,
+        retrievedMemorySnippets: retrievedMemory.map((record) => record.content.slice(0, 200)),
+      },
+    });
 
     if (branched.workOrder.status === "READY_TO_ACT") {
       const receipt = await writeEloraReceipt({
