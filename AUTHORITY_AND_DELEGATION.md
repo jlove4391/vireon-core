@@ -179,6 +179,32 @@ mechanics (parent/child actor, delegated WorkOrder, context inheritance, yield/r
 state, return receipt) that `'supervised'` mode implements; that section now
 cross-references here rather than duplicating this doctrine.
 
+### 6.1 A Delegated Child WorkOrder's Identity
+
+A delegated child WorkOrder correctly reuses its parent's `thread_id`/`message_id`
+— that is genuinely "context inheritance by reference" per `core-runtime.md` §11.2,
+not a bug. But that reused message is the *parent's* original user request, not
+something the child itself received, and two things follow from that:
+
+- **Set a real `interpreted_intent` on every delegated child**, synthesized from the
+  delegation itself — e.g. `"Delegated by ${parentPersonaName} (${delegationMode}):
+  ${reason}"` — never inherited verbatim from the parent's own intent, and never left
+  blank. This is the field that actually identifies what the child WorkOrder is
+  about; the inherited message is supplementary context, not the child's identity.
+- **Never present inherited parent context as if it belongs to the child.** Any
+  read-time reconstruction of "the original request" (e.g. diagnostic/inspection
+  tooling) must either omit it for a delegated child or clearly label it as
+  inherited — `tools/diagnostics/workOrder.ts`'s `getInspectableReceipt()` does this
+  via `delegatedFrom` (non-null only on a delegated child, naming the parent
+  WorkOrder and `delegation_mode`) and `originalRequest.inheritedFromParent`
+  (true whenever the reconstructed message belongs to the parent, not the child).
+
+This is a presentation-layer obligation, not a new schema requirement — no column
+changes are needed here, since `interpreted_intent` already existed and is nullable.
+It is, however, a real convention: any future code path that creates a delegated
+child WorkOrder should follow it, and any future code path that reads one back
+should preserve the distinction rather than rediscovering it.
+
 ## 7. Scope of This Document
 
 This document defines the hierarchy's structure, the standing-authorization

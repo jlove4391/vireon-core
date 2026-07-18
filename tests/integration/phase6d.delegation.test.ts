@@ -4,9 +4,24 @@ import { migrate } from "../../src/db/migrate.js";
 import { pool } from "../../src/db/pool.js";
 import { withTenantTransaction } from "../../src/db/withTenantTransaction.js";
 import { createWorkOrder } from "../../src/state/createWorkOrder.js";
+import { transitionWorkOrder } from "../../src/state/transitionWorkOrder.js";
 import { writeDelegationReceipt } from "../../src/state/writeDelegationReceipt.js";
+import { writeEloraReceipt } from "../../src/elora/writeEloraReceipt.js";
+import { getInspectableReceipt } from "../../tools/diagnostics/workOrder.js";
 import { reconcileSovereign, seedPersonaRoster } from "../../scripts/seedPersonaRoster.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
+
+/**
+ * The convention for a delegated child WorkOrder's interpreted_intent
+ * (established here since nothing live creates a real delegated child yet
+ * -- whoever writes the first real caller, Nexora/Kaz/Jynx, should follow
+ * this pattern rather than inheriting or leaving blank whatever the
+ * parent's own intent was). See AUTHORITY_AND_DELEGATION.md's
+ * delegated-child-identity note.
+ */
+function describeDelegation(parentPersonaName: string, delegationMode: "supervised" | "peer", reason: string): string {
+  return `Delegated by ${parentPersonaName} (${delegationMode}): ${reason}`;
+}
 
 interface HierarchyContext extends SeededContext {
   sovereignId: string;
@@ -111,6 +126,8 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
       interpretedIntent: "Phase 6D supervised-delegation parent",
     });
 
+    const delegationReason = "ELORA delegates implementation work to Nexora.";
+
     const { workOrder: child } = await createWorkOrder({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -120,7 +137,9 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
       actorId: eloraId,
       ownerActorId: nexoraId,
       taskType: "implementation",
-      interpretedIntent: "Phase 6D supervised-delegation child",
+      // Convention (not inherited from the parent, not left blank): a
+      // synthesized description of the delegation itself.
+      interpretedIntent: describeDelegation("Elora", "supervised", delegationReason),
       parentWorkOrderId: parent.id,
       delegationMode: "supervised",
     });
@@ -129,6 +148,8 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
     expect(childRow.parent_work_order_id).toBe(parent.id);
     expect(childRow.delegation_mode).toBe("supervised");
     expect(childRow.owner_actor_id).toBe(nexoraId);
+    expect(child.interpreted_intent).toBe(describeDelegation("Elora", "supervised", delegationReason));
+    expect(child.interpreted_intent).not.toBe(parent.interpreted_intent);
 
     const receipt = await writeDelegationReceipt({
       tenantId: ctx.tenantId,
@@ -137,7 +158,7 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
       parentActorId: eloraId,
       childActorId: nexoraId,
       delegationMode: "supervised",
-      reason: "ELORA delegates implementation work to Nexora.",
+      reason: delegationReason,
     });
 
     const persistedReceipt = await fetchDelegationReceipt(ctx.tenantId, receipt.id);
@@ -187,6 +208,8 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
       interpretedIntent: "Phase 6D peer-delegation parent",
     });
 
+    const delegationReason = "Cassian routes analysis work to Veyra as a structural peer.";
+
     const { workOrder: child } = await createWorkOrder({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -196,7 +219,7 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
       actorId: cassianId,
       ownerActorId: veyraId,
       taskType: "analysis",
-      interpretedIntent: "Phase 6D peer-delegation child",
+      interpretedIntent: describeDelegation("Cassian", "peer", delegationReason),
       parentWorkOrderId: parent.id,
       delegationMode: "peer",
     });
@@ -205,6 +228,8 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
     expect(childRow.parent_work_order_id).toBe(parent.id);
     expect(childRow.delegation_mode).toBe("peer");
     expect(childRow.owner_actor_id).toBe(veyraId);
+    expect(child.interpreted_intent).toBe(describeDelegation("Cassian", "peer", delegationReason));
+    expect(child.interpreted_intent).not.toBe(parent.interpreted_intent);
 
     const receipt = await writeDelegationReceipt({
       tenantId: ctx.tenantId,
@@ -213,7 +238,7 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
       parentActorId: cassianId,
       childActorId: veyraId,
       delegationMode: "peer",
-      reason: "Cassian routes analysis work to Veyra as a structural peer.",
+      reason: delegationReason,
     });
 
     const persistedReceipt = await fetchDelegationReceipt(ctx.tenantId, receipt.id);
@@ -312,6 +337,153 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
     // Setting it (or leaving it null) has no bearing on WorkOrder status --
     // still RECEIVED, nothing consumed or validated it.
     expect(workOrder.status).toBe("RECEIVED");
+  });
+
+  it("getInspectableReceipt() labels inherited parent context for a delegated child, never presents it as the child's own request", async () => {
+    const eloraId = ctx.personaIdsByName.get("Elora")!;
+    const nexoraId = ctx.personaIdsByName.get("Nexora")!;
+    const delegationReason = "ELORA delegates a follow-up analysis to Nexora.";
+    const childIntent = describeDelegation("Elora", "supervised", delegationReason);
+
+    const { workOrder: parent } = await createWorkOrder({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      projectId: ctx.projectId,
+      threadId: ctx.threadId,
+      messageId: ctx.messageId,
+      actorId: eloraId,
+      ownerActorId: eloraId,
+      taskType: "planning",
+      interpretedIntent: "Phase 6D inspectable-receipt parent",
+    });
+
+    const { workOrder: child } = await createWorkOrder({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      projectId: ctx.projectId,
+      // Correctly reuses the parent's thread/message -- "context
+      // inheritance by reference" per core-runtime.md §11.2. This is the
+      // part that was always right; what needed fixing is how the
+      // inspector *presents* it, not the data itself.
+      threadId: ctx.threadId,
+      messageId: ctx.messageId,
+      actorId: eloraId,
+      ownerActorId: nexoraId,
+      taskType: "analysis",
+      interpretedIntent: childIntent,
+      parentWorkOrderId: parent.id,
+      delegationMode: "supervised",
+    });
+
+    await transitionWorkOrder({
+      tenantId: ctx.tenantId,
+      workOrderId: child.id,
+      nextStatus: "INTENT_PARSED",
+      actorId: nexoraId,
+      reason: "parse",
+    });
+    const classified = await transitionWorkOrder({
+      tenantId: ctx.tenantId,
+      workOrderId: child.id,
+      nextStatus: "AUTHORITY_CLASSIFIED",
+      actorId: nexoraId,
+      reason: "classify",
+      authorityDecision: {
+        outcome: "act_and_report",
+        requiresHumanGatekeeper: false,
+        reason: "Directly authorized delegated work.",
+        riskLevel: "low",
+      },
+    });
+    await transitionWorkOrder({
+      tenantId: ctx.tenantId,
+      workOrderId: child.id,
+      nextStatus: "READY_TO_ACT",
+      actorId: nexoraId,
+      reason: "route to READY_TO_ACT",
+    });
+
+    // Direct construction (no live caller exists to drive this through a
+    // real pipeline yet) -- same synthetic-fixture approach as tests 1/2.
+    await writeEloraReceipt({
+      tenantId: ctx.tenantId,
+      workOrderId: child.id,
+      authorityDecisionId: classified.authorityDecision!.id,
+      actorId: nexoraId,
+      responseText: "Delegated analysis complete.",
+      retrievedMemoryIds: [],
+    });
+
+    const receipt = await getInspectableReceipt(ctx.tenantId, child.id);
+    expect(receipt).not.toBeNull();
+
+    // The delegation link is surfaced explicitly...
+    expect(receipt!.delegatedFrom).toEqual({ parentWorkOrderId: parent.id, delegationMode: "supervised" });
+
+    // ...the reconstructed message is present (it's genuinely useful
+    // context) but clearly labeled as the parent's, not the child's own...
+    expect(receipt!.originalRequest).not.toBeNull();
+    expect(receipt!.originalRequest!.messageId).toBe(ctx.messageId);
+    expect(receipt!.originalRequest!.inheritedFromParent).toBe(true);
+
+    // ...and interpretedIntent -- the child's own synthesized delegation
+    // description -- is what actually identifies this WorkOrder, distinct
+    // from the raw inherited message content.
+    expect(receipt!.interpretedIntent.summary).toBe(childIntent);
+    expect(receipt!.interpretedIntent.summary).not.toBe(receipt!.originalRequest!.content);
+
+    // Comparison: an ordinary, non-delegated WorkOrder's own receipt never
+    // carries a delegation label or an inheritance flag.
+    const { workOrder: ordinary } = await createWorkOrder({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      projectId: ctx.projectId,
+      threadId: ctx.threadId,
+      messageId: ctx.messageId,
+      actorId: ctx.sovereignId,
+      taskType: "planning",
+      interpretedIntent: "Phase 6D ordinary WorkOrder for inspectable-receipt comparison",
+    });
+    await transitionWorkOrder({
+      tenantId: ctx.tenantId,
+      workOrderId: ordinary.id,
+      nextStatus: "INTENT_PARSED",
+      actorId: ctx.sovereignId,
+      reason: "parse",
+    });
+    const ordinaryClassified = await transitionWorkOrder({
+      tenantId: ctx.tenantId,
+      workOrderId: ordinary.id,
+      nextStatus: "AUTHORITY_CLASSIFIED",
+      actorId: ctx.sovereignId,
+      reason: "classify",
+      authorityDecision: {
+        outcome: "act_and_report",
+        requiresHumanGatekeeper: false,
+        reason: "Directly authorized.",
+        riskLevel: "low",
+      },
+    });
+    await transitionWorkOrder({
+      tenantId: ctx.tenantId,
+      workOrderId: ordinary.id,
+      nextStatus: "READY_TO_ACT",
+      actorId: ctx.sovereignId,
+      reason: "route to READY_TO_ACT",
+    });
+    await writeEloraReceipt({
+      tenantId: ctx.tenantId,
+      workOrderId: ordinary.id,
+      authorityDecisionId: ordinaryClassified.authorityDecision!.id,
+      actorId: ctx.sovereignId,
+      responseText: "Ordinary WorkOrder complete.",
+      retrievedMemoryIds: [],
+    });
+
+    const ordinaryReceipt = await getInspectableReceipt(ctx.tenantId, ordinary.id);
+    expect(ordinaryReceipt).not.toBeNull();
+    expect(ordinaryReceipt!.delegatedFrom).toBeNull();
+    expect(ordinaryReceipt!.originalRequest?.inheritedFromParent).toBe(false);
   });
 
   // Item 6 (Phase 1-5, 6A, 6B, 6C regression) is verified by running the
