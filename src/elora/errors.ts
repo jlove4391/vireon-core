@@ -71,6 +71,24 @@ export class EloraAuthorityClassificationError extends EloraError {
   }
 }
 
+/**
+ * Phase 6C §6: raised when resolveAuthorityWithHierarchy() needs to start a
+ * hierarchy walk (an ordinary, non-floor-protected escalate) but ELORA's own
+ * persona actor row can't be resolved for the tenant -- e.g. the Phase 6B
+ * persona roster was never seeded there. Only reachable on that path, not on
+ * every request -- see the known limitation noted in the Phase 6C completion
+ * report.
+ */
+export class EloraPersonaActorNotFoundError extends EloraError {
+  constructor(
+    public readonly tenantId: string,
+    public readonly personaName: string,
+  ) {
+    super(`Persona actor '${personaName}' not found for tenant ${tenantId}`);
+    this.name = "EloraPersonaActorNotFoundError";
+  }
+}
+
 export class EloraReceiptWriteError extends EloraError {
   constructor(reason: string) {
     super(`Failed to write ELORA receipt: ${reason}`);

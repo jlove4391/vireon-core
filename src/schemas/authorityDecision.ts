@@ -18,6 +18,10 @@ export const authorityDecisionSchema = z.object({
   run_id: uuidSchema.nullable().default(null),
   tool_invocation_id: uuidSchema.nullable().default(null),
   required_setup: z.string().nullable().default(null),
+  // Phase 6C: set only when a standing authorization silently resolved this
+  // decision (see resolveAuthorityWithHierarchy.ts); null for baseline
+  // classifier results and genuine, unresolved live escalations.
+  resolved_via_standing_rule_id: uuidSchema.nullable().default(null),
   created_at: z.string().datetime(),
 });
 

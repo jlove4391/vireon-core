@@ -10,12 +10,13 @@ import {
 import type { AuthorityOutcome } from "../shared/runtimeTypes.js";
 import { isToolRegistered } from "../tools/registry.js";
 import { registerCoreTools } from "../tools/index.js";
-import { classifyAuthority } from "./classifyAuthority.js";
 import { dispatchTool } from "./dispatchTool.js";
+import { EloraPersonaActorNotFoundError } from "./errors.js";
 import { normalizeIngress } from "./normalizeIngress.js";
 import { persistMessage } from "./persistMessage.js";
 import { parseIntent } from "./parseIntent.js";
 import { proposeMemoryCandidates } from "./proposeMemoryCandidates.js";
+import { resolveAuthorityWithHierarchy } from "./resolveAuthorityWithHierarchy.js";
 import { resolveContext } from "./resolveContext.js";
 import { retrieveRelevantMemory, type RetrievedMemoryRecord } from "./retrieveRelevantMemory.js";
 import { runToolExecution } from "./runToolExecution.js";
@@ -23,6 +24,28 @@ import { synthesizeIngestionResponse } from "./synthesizeIngestionResponse.js";
 import { AUTHORITY_OUTCOME_TO_REASON_CODE, type EloraIngestionResult, type EloraIngressInput, type EloraStructuredIntent } from "./types.js";
 import { writeBlockedReceipt } from "./writeBlockedReceipt.js";
 import { writeEloraReceipt } from "./writeEloraReceipt.js";
+
+// Phase 6C §6: only ELORA has a live ingestion pipeline today, so the
+// hierarchy walk's starting actor is hardcoded to her persona actor id --
+// a stated, known limitation, not a silent gap. This is fully generic from
+// resolveAuthorityWithHierarchy.ts's point of view (it just receives an
+// actor id); the ELORA-specific lookup lives here, at the call site, and
+// only runs lazily when a walk is actually about to happen (an ordinary,
+// non-floor-protected escalate) -- not on every request. True persona
+// parameterization is 6F's PersonaConfig integration, not this phase's.
+async function resolveEloraPersonaActorId(tenantId: string): Promise<string> {
+  return withTenantTransaction(tenantId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      "SELECT id FROM actors WHERE tenant_id = $1 AND actor_name = 'Elora' AND hierarchy_tier = 'executive'",
+      [tenantId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new EloraPersonaActorNotFoundError(tenantId, "Elora");
+    }
+    return row.id;
+  });
+}
 
 // Static, in-process tool registry (§5) -- registered once at module load,
 // before any call to ingestUserMessage() can execute.
@@ -104,6 +127,7 @@ async function loadAlreadyProcessedResult(
         reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE[reconstructedOutcome],
         risk_level: "low",
         required_setup: null,
+        floorProtected: false,
       },
       retrievedMemory,
     });
@@ -222,10 +246,12 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
   });
   transitionPath.push(intentParsed.workOrder.status);
 
-  let authority = classifyAuthority({
+  let authority = await resolveAuthorityWithHierarchy({
+    tenantId: context.tenantId,
     content: persisted.content,
     taskType: intent.task_type,
     resolvedProjectId: context.projectId,
+    resolveStartingActorId: () => resolveEloraPersonaActorId(context.tenantId),
   });
 
   // §8.3: should be structurally impossible given the closed dispatch set
@@ -241,6 +267,8 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.capability_missing,
       risk_level: "low",
       required_setup: null,
+      floorProtected: false,
+      resolvedViaStandingRuleId: null,
     };
   }
 
@@ -256,6 +284,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       reason: authority.reason,
       riskLevel: authority.risk_level,
       requiredSetup: authority.required_setup,
+      resolvedViaStandingRuleId: authority.resolvedViaStandingRuleId,
     },
   });
   transitionPath.push(authorityClassified.workOrder.status);

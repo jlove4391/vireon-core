@@ -9,14 +9,21 @@ export interface ClassifyAuthorityInput {
 
 // Deterministic cue-based classification -- no model calls (Phase 3 §5/§13).
 // Rule precedence matters: refuse and capability_missing are checked before
-// escalate, and escalate (external side effects) is checked before the
-// setup_required rule, so a request like "send an email and deploy to
-// production" escalates on its external-side-effect cues regardless of
-// what task_type parseIntent assigned it.
+// either escalate cue, floor-protected escalate is checked before ordinary
+// escalate, and both are checked before the setup_required rule, so a
+// request like "send an email and deploy to production" escalates
+// floor-protected regardless of what task_type parseIntent assigned it.
 const REFUSE_CUE = /\b(steal|exfiltrat)\b/i;
 const CAPABILITY_MISSING_CUE = /\b(3d|cad|manufactur|physical (prototype|part)|3d[- ]?print)\b/i;
-const EXTERNAL_SIDE_EFFECT_CUE =
-  /\b(send (an )?email|calendar event|deploy|to production|spend|payment|credentials?|delete (the )?(prod|database))\b/i;
+
+// Phase 6C §4.1: the original single EXTERNAL_SIDE_EFFECT_CUE is split so
+// resolveAuthorityWithHierarchy.ts can tell which escalate outcomes are
+// permanently floor-protected (RMT / sensitive-data / irreversible-action --
+// AUTHORITY_AND_DELEGATION.md §4/§5) versus ordinary escalates eligible for
+// standing-authorization resolution. Floor-protected is checked first.
+const FLOOR_PROTECTED_ESCALATE_CUE =
+  /\b(deploy|to production|spend|payment|credentials?|delete (the )?(prod|database))\b/i;
+const ORDINARY_ESCALATE_CUE = /\b(send (an )?email|calendar event)\b/i;
 
 /**
  * Owns the setup_required trigger rule (§5.1): task_type === "implementation"
@@ -33,6 +40,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.refuse,
       risk_level: "high",
       required_setup: null,
+      floorProtected: false,
     };
   }
 
@@ -44,10 +52,24 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.capability_missing,
       risk_level: "low",
       required_setup: null,
+      floorProtected: false,
     };
   }
 
-  if (EXTERNAL_SIDE_EFFECT_CUE.test(input.content)) {
+  if (FLOOR_PROTECTED_ESCALATE_CUE.test(input.content)) {
+    return {
+      outcome: "escalate",
+      requires_human_gatekeeper: true,
+      reason:
+        "Request matches an RMT / sensitive-data / irreversible-action pattern that is permanently ineligible for standing pre-authorization.",
+      reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.escalate,
+      risk_level: "high",
+      required_setup: null,
+      floorProtected: true,
+    };
+  }
+
+  if (ORDINARY_ESCALATE_CUE.test(input.content)) {
     return {
       outcome: "escalate",
       requires_human_gatekeeper: true,
@@ -55,6 +77,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.escalate,
       risk_level: "high",
       required_setup: null,
+      floorProtected: false,
     };
   }
 
@@ -66,6 +89,7 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
       reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.setup_required,
       risk_level: "medium",
       required_setup: "project_id",
+      floorProtected: false,
     };
   }
 
@@ -76,5 +100,6 @@ export function classifyAuthority(input: ClassifyAuthorityInput): EloraAuthority
     reasonCode: AUTHORITY_OUTCOME_TO_REASON_CODE.act_and_report,
     risk_level: "low",
     required_setup: null,
+    floorProtected: false,
   };
 }

@@ -26,6 +26,8 @@ export interface AuthorityDecisionSubstantiatingInput {
   riskLevel?: string | null;
   decidingActorId?: string | null;
   requiredSetup?: string | null;
+  /** Phase 6C: set when a standing authorization silently resolved this decision. */
+  resolvedViaStandingRuleId?: string | null;
 }
 
 export interface MemoryCandidateSubstantiatingInput {
@@ -135,14 +137,16 @@ async function runTransition(
         run_id: null,
         tool_invocation_id: null,
         required_setup: decisionInput.requiredSetup ?? null,
+        resolved_via_standing_rule_id: decisionInput.resolvedViaStandingRuleId ?? null,
         created_at: now,
       });
 
       await client.query(
         `INSERT INTO authority_decisions
            (id, tenant_id, schema_version, outcome, requires_human_gatekeeper, reason,
-            risk_level, deciding_actor_id, work_order_id, required_setup, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            risk_level, deciding_actor_id, work_order_id, required_setup,
+            resolved_via_standing_rule_id, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           parsedDecision.id,
           parsedDecision.tenant_id,
@@ -154,6 +158,7 @@ async function runTransition(
           parsedDecision.deciding_actor_id,
           parsedDecision.work_order_id,
           parsedDecision.required_setup,
+          parsedDecision.resolved_via_standing_rule_id,
           parsedDecision.created_at,
         ],
       );
