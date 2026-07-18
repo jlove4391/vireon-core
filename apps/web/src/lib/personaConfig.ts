@@ -21,6 +21,11 @@ export interface PersonaConfig {
    * to anything that pretends to enforce it in 6A.
    */
   authorityScope?: string;
+  /** Phase 6F §7: confirmed from ELORA.md's consistent usage, not invented. */
+  pronouns: string;
+  genderIdentity: string;
+  /** Phase 6F §7: stays null -- real voice model integration is unscheduled. */
+  voiceModelId: string | null;
 }
 
 export const ELORA_PERSONA: PersonaConfig = {
@@ -34,4 +39,7 @@ export const ELORA_PERSONA: PersonaConfig = {
     primary: "var(--color-accent-cyan)",
     secondary: "var(--color-accent-violet)",
   },
+  pronouns: "she/her",
+  genderIdentity: "female",
+  voiceModelId: null,
 };

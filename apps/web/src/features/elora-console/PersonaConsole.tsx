@@ -93,7 +93,7 @@ export function PersonaConsole({ persona }: PersonaConsoleProps) {
       </header>
 
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-6">
-        {entries.length === 0 ? (
+        {entries.length === 0 && !isSending ? (
           <EmptyState
             title="No messages yet"
             description={`Send a message to start a conversation with ${persona.name}.`}
@@ -111,6 +111,17 @@ export function PersonaConsole({ persona }: PersonaConsoleProps) {
                 {entry.result && <ActionCard result={entry.result} />}
               </div>
             ))}
+            {/* Phase 6F §6: a live model call takes real seconds where
+                everything before it has been near-instant -- a multi-second
+                wait with no visual feedback would look like a frozen UI. */}
+            {isSending && (
+              <div className="flex flex-col items-start gap-1" aria-live="polite">
+                <span className="text-xs uppercase tracking-wide text-text-secondary">{persona.name}</span>
+                <div className="max-w-[75%] animate-pulse rounded-panel border border-accent-cyan/30 bg-accent-cyan/5 px-4 py-3 text-body text-text-secondary">
+                  {persona.name} is thinking…
+                </div>
+              </div>
+            )}
           </div>
         )}
 
