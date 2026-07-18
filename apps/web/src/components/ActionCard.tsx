@@ -1,8 +1,8 @@
-import type { EloraIngestionResult } from "../lib/api";
+import type { EloraMessageResponse } from "../lib/api";
 import { Card } from "./Card";
 
 interface ActionCardProps {
-  result: EloraIngestionResult;
+  result: EloraMessageResponse;
 }
 
 const BLOCKED_TITLES: Record<string, string> = {
@@ -18,15 +18,19 @@ const BLOCKED_TITLES: Record<string, string> = {
  * If toolInvocationId/artifactId are null, nothing tool-related renders --
  * the caller must not mount this component at all in that case. If
  * blockedReceiptId is set, the blocked-state card renders, never a success
- * card. EloraIngestionResult carries no `required_setup` free-text field,
+ * card. EloraMessageResponse carries no `required_setup` free-text field,
  * so the blocked explanation uses responseText (the one human-readable
  * field the API actually returns) rather than inventing one.
+ *
+ * Phase 6E: reads the flattened result.artifactFilename rather than
+ * reaching into a raw intent object -- the backend's internal
+ * EloraStructuredIntent never crosses the wire.
  */
 export function ActionCard({ result }: ActionCardProps) {
   const toolRan = Boolean(result.toolInvocationId && result.artifactId);
 
   if (toolRan) {
-    const filename = result.intent.artifactRequest?.filename ?? "(filename unavailable)";
+    const filename = result.artifactFilename ?? "(filename unavailable)";
     return (
       <Card glow="cyan" className="text-sm">
         <p className="font-heading text-accent-cyan-glow">Artifact created: {filename}</p>
