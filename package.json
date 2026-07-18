@@ -21,6 +21,7 @@
     "test:phase6b": "vitest run tests/integration/phase6b.authority-hierarchy.test.ts",
     "test:phase6c": "vitest run tests/integration/phase6c.authority-resolution.test.ts",
     "test:phase6d": "vitest run tests/integration/phase6d.delegation.test.ts",
+    "test:phase6e": "vitest run tests/integration/phase6e.ui-contract-layer.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "diagnostics": "tsx tools/diagnostics/index.ts",
     "seed:dev-identity": "tsx scripts/seedDevIdentity.ts",
@@ -28,6 +29,7 @@
     "dev:server": "tsx watch src/http/server.ts"
   },
   "dependencies": {
+    "@vireon/contracts": "workspace:*",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "ioredis": "^5.4.1",

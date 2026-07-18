@@ -1,18 +1,16 @@
 import { Router, type Request, type Response } from "express";
-import { z } from "zod";
+import { SendEloraMessageRequestSchema } from "@vireon/contracts";
 import { ingestUserMessage } from "../../elora/ingestUserMessage.js";
 import { EloraError } from "../../elora/errors.js";
 import { getDevIdentity } from "../devIdentity.js";
+import { toEloraMessageResponse } from "../contracts/eloraMessageResponse.js";
 
-// Phase 6A §7: exactly one route. Thin adapter over ingestUserMessage() --
-// no ingestion logic duplicated, no client-side reconstruction of anything
-// the function already returns. Returns EloraIngestionResult verbatim.
-
-const sendEloraMessageSchema = z.object({
-  threadId: z.string().uuid().optional(),
-  content: z.string().trim().min(1, "content must not be empty"),
-  clientRequestId: z.string().trim().min(1, "clientRequestId must not be empty"),
-});
+// Phase 6A §7: exactly one route. Thin adapter over ingestUserMessage().
+// Phase 6E: the request schema now lives in the shared @vireon/contracts
+// package (moved from a locally-declared schema, for symmetry with the
+// response side), and the response is no longer EloraIngestionResult
+// verbatim -- it's transformed through the stable, narrower
+// EloraMessageResponse contract before it goes on the wire.
 
 interface ApiErrorBody {
   error: { code: string; message: string };
@@ -25,7 +23,7 @@ function errorBody(code: string, message: string): ApiErrorBody {
 export const eloraMessagesRouter = Router();
 
 eloraMessagesRouter.post("/api/elora/messages", async (req: Request, res: Response) => {
-  const parsed = sendEloraMessageSchema.safeParse(req.body);
+  const parsed = SendEloraMessageRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json(errorBody("INVALID_REQUEST", parsed.error.issues[0]?.message ?? "Invalid request body"));
     return;
@@ -55,7 +53,7 @@ eloraMessagesRouter.post("/api/elora/messages", async (req: Request, res: Respon
       sourceSurface: "web-console",
       sourceCorrelationId: parsed.data.clientRequestId,
     });
-    res.status(200).json(result);
+    res.status(200).json(toEloraMessageResponse(result));
   } catch (error) {
     if (error instanceof EloraError) {
       res.status(400).json(errorBody(error.name, error.message));

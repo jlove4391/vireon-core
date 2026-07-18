@@ -6,7 +6,7 @@ import { ActionCard } from "../../components/ActionCard";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import type { PersonaConfig } from "../../lib/personaConfig";
-import { sendEloraMessage, EloraApiError, type EloraIngestionResult } from "../../lib/api";
+import { sendEloraMessage, EloraApiError, type EloraMessageResponse } from "../../lib/api";
 import { getStoredThreadId, setStoredThreadId } from "../../lib/threadStorage";
 
 interface ConversationEntry {
@@ -14,7 +14,7 @@ interface ConversationEntry {
   role: "user" | "persona";
   content: string;
   timestamp: number;
-  result?: EloraIngestionResult;
+  result?: EloraMessageResponse;
 }
 
 export interface PersonaConsoleProps {
