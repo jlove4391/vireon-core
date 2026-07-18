@@ -49,7 +49,11 @@ export async function proposeMemoryCandidates(input: ProposeMemoryCandidatesInpu
       candidate_content: candidateContent,
       candidate_type: candidateType,
       confidence: input.intent.confidence,
-      scope: "project",
+      // Phase 6G: "general" is the one established domain label today.
+      // Real domain values ("finance", "engineering", etc.) are added only
+      // once the specific persona that needs them actually exists --
+      // domain-weighted retrieval itself is 6H's job, not this phase's.
+      scope: "general",
       reason_for_creation: reasonForCreation,
       promoted_memory_record_id: null,
       created_at: now,

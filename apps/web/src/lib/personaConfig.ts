@@ -26,6 +26,14 @@ export interface PersonaConfig {
   genderIdentity: string;
   /** Phase 6F §7: stays null -- real voice model integration is unscheduled. */
   voiceModelId: string | null;
+  /**
+   * Phase 6G §8: e.g. "finance" once Jynx exists; null for Elora
+   * (executive-tier, sees the full pool). Deliberately unused by any
+   * retrieval logic in this phase -- domain-weighted retrieval is 6H's
+   * job. Declared now so future persona phases don't need another
+   * PersonaConfig schema change purely to add it.
+   */
+  domain: string | null;
 }
 
 export const ELORA_PERSONA: PersonaConfig = {
@@ -42,4 +50,5 @@ export const ELORA_PERSONA: PersonaConfig = {
   pronouns: "she/her",
   genderIdentity: "female",
   voiceModelId: null,
+  domain: null,
 };
