@@ -15,6 +15,7 @@ The purpose of this file is to prevent scope drift, fake capability, unsafe data
 * This file defines the standing repository rules that apply unless the user explicitly overrides them.
 * Do not infer the active task, current phase, or sprint objective from `README.md`. Active tasking is supplied manually by the user in implementation prompts.
 * If the active prompt conflicts with this file, do not silently choose. Surface the conflict clearly in the completion report or ask for clarification if execution cannot proceed safely.
+* Read `/ROADMAP.md` at the start of any new session, before other work begins — it carries the same standing as the other doctrine files this document directs agents to read.
 
 ## Operating Mode
 
