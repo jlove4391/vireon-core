@@ -17,6 +17,11 @@ export const memoryCandidateSchema = z
     reason_for_creation: z.string().nullable().default(null),
     promoted_memory_record_id: uuidSchema.nullable().default(null),
     created_at: z.string().datetime(),
+    // Phase 6G: reviewer accountability. All three stay null until a
+    // candidate is actually reviewed.
+    reviewed_by_actor_id: uuidSchema.nullable().default(null),
+    reviewed_at: z.string().datetime().nullable().default(null),
+    review_note: z.string().nullable().default(null),
   })
   .refine(
     (candidate) =>

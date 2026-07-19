@@ -23,6 +23,7 @@
     "test:phase6d": "vitest run tests/integration/phase6d.delegation.test.ts",
     "test:phase6e": "vitest run tests/integration/phase6e.ui-contract-layer.test.ts",
     "test:phase6f": "vitest run tests/integration/phase6f.llm-integration.test.ts",
+    "test:phase6g": "vitest run tests/integration/phase6g.memory-review.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "diagnostics": "tsx tools/diagnostics/index.ts",
     "seed:dev-identity": "tsx scripts/seedDevIdentity.ts",

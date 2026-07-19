@@ -1,4 +1,5 @@
 import type { AcceptanceReportSummary } from "./acceptanceReports.js";
+import type { MemoryCandidateSummaryRow } from "./memory.js";
 import type { TenantRow, WorkOrderSummaryRow } from "./tenants.js";
 import type { WorkOrderDetail } from "./workOrder.js";
 
@@ -16,6 +17,19 @@ export function printWorkOrdersTable(workOrders: WorkOrderSummaryRow[]): void {
     return;
   }
   console.table(workOrders);
+}
+
+export function printMemoryCandidatesTable(candidates: MemoryCandidateSummaryRow[]): void {
+  if (candidates.length === 0) {
+    console.log("No MemoryCandidates found for this tenant (with the given filters, if any).");
+    return;
+  }
+  console.table(
+    candidates.map((candidate) => ({
+      ...candidate,
+      candidate_content: candidate.candidate_content.slice(0, 80),
+    })),
+  );
 }
 
 export function printAcceptanceReports(reports: AcceptanceReportSummary[]): void {

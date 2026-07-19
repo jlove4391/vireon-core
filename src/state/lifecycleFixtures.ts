@@ -43,7 +43,8 @@ export const HAPPY_PATH_TRANSITIONS: readonly HappyPathTransitionFixture[] = [
       candidateContent: "Phase 2 acceptance run completed the full WorkOrder lifecycle.",
       candidateType: "observation",
       confidence: 0.75,
-      scope: "project",
+      // Phase 6G: "general" is the one established domain label today.
+      scope: "general",
       reasonForCreation: "Derived from WorkOrder completion during Phase 2 acceptance test",
     },
   },
