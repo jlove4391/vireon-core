@@ -26,6 +26,7 @@ export const RECEIPT_TYPES = [
   "receipt_superseded",
   "elora_ingestion_completed",
   "elora_request_blocked",
+  "trigger_created",
 ] as const;
 
 export const receiptTypeSchema = z.enum(RECEIPT_TYPES);
