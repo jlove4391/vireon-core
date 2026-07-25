@@ -23,6 +23,7 @@ export function toEloraMessageResponse(result: EloraIngestionResult): EloraMessa
     artifactId: result.artifactId,
     artifactFilename: result.intent.artifactRequest?.filename ?? null,
     memoryCandidateIds: result.memoryCandidateIds,
+    retrievedMemoryCount: result.retrievedMemoryCount,
   };
   // Validate the backend's own output before it goes on the wire -- catches
   // a transform bug before it ever reaches the client.

@@ -52,11 +52,18 @@ export type WorkOrderStatus = z.infer<typeof workOrderStatusSchema>;
 
 // A deliberately flattened, narrower DTO -- not a redacted copy of the
 // backend's internal EloraIngestionResult. See AUTHORITY_AND_DELEGATION.md-
-// style reasoning captured in the Phase 6E handoff: tenantId, authorityDecisionId,
-// transitionPath, retrievedMemoryCount/retrievedMemoryIds, and the raw
-// intent object are all deliberately excluded (not an oversight -- see the
-// Phase 6E completion report for why, and note retrievedMemoryIds in
-// particular is expected to be added here, additively, when 6G needs it).
+// style reasoning captured in the Phase 6E handoff: tenantId,
+// authorityDecisionId, transitionPath, and the raw intent object are all
+// deliberately excluded (not an oversight -- see the Phase 6E completion
+// report for why).
+//
+// 6H §5.3: retrievedMemoryCount is added here, additively -- a bare count,
+// the "minimum safe" retrieval metadata decided in 6H's Phase A proposal.
+// retrievedMemoryIds (raw internal memory_records UUIDs) is deliberately
+// still excluded: no frontend consumer exists for it (6H's own non-goals
+// exclude a memory review UI), and it would expose internal row identifiers
+// and retrieval-ranking internals for no current purpose. Add it later,
+// additively, only when something on the frontend actually needs it.
 export const EloraMessageResponseSchema = z.object({
   schemaVersion: z.literal("1"),
 
@@ -83,6 +90,7 @@ export const EloraMessageResponseSchema = z.object({
   artifactFilename: z.string().nullable(),
 
   memoryCandidateIds: z.array(z.string().uuid()),
+  retrievedMemoryCount: z.number().int().nonnegative(),
 });
 export type EloraMessageResponse = z.infer<typeof EloraMessageResponseSchema>;
 

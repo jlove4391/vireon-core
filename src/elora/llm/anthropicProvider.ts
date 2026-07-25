@@ -11,6 +11,23 @@ import type { LlmProvider, LlmResponseContext } from "./types.js";
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 1024;
 
+// 6H §5.4: token budget / context isolation, decided as a small addition at
+// this one call site -- not a reusable per-persona execution-context
+// primitive (no second concurrent persona execution exists in any live
+// path yet to generalize against; extend when one does). A rough,
+// character-based ceiling, not a real tokenizer -- the decision explicitly
+// scoped this small, not a heavier tokenizer dependency. The user-message
+// side of the prompt is the only genuinely unbounded input (persona fields
+// are fixed constants, retrievedMemorySnippets is already capped at 5
+// records x 200 chars by the caller) -- this bounds the fully-assembled
+// user text as the actor/persona boundary's actual isolation point.
+const MAX_USER_PROMPT_CHARS = 8_000;
+
+function boundToTokenBudget(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n[... truncated, ${text.length} chars total, over the ${maxChars}-char prompt budget]`;
+}
+
 /**
  * Generic, persona-driven prompt construction -- never a hardcoded
  * reference to "Elora" in this function. Same discipline PersonaConsole.tsx
@@ -61,7 +78,7 @@ export function buildPrompt(context: LlmResponseContext): { system: string; user
 
   userLines.push("Write the in-character reply now, describing only the above.");
 
-  return { system, user: userLines.join("\n") };
+  return { system, user: boundToTokenBudget(userLines.join("\n"), MAX_USER_PROMPT_CHARS) };
 }
 
 /**
@@ -80,7 +97,15 @@ export class AnthropicProvider implements LlmProvider {
       {
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system,
+        // 6H §5.5: system-string half of prompt caching only (decided --
+        // no tool schemas are ever sent to a model in this codebase today;
+        // tool selection is fully deterministic via dispatchTool.ts, so
+        // there's nothing on that half to cache yet). system is built
+        // purely from fixed persona fields (name/formalTitle/corporateRole/
+        // pronouns/voiceTone) -- byte-identical across every call for a
+        // given persona, never touched by per-call content -- so it's a
+        // genuinely stable prefix, not merely typically-stable.
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: user }],
       },
       { timeout: timeoutMs },

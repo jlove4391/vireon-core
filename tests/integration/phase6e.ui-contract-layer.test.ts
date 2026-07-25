@@ -65,13 +65,17 @@ describe("Phase 6E: Stable UI-Facing Contract Layer acceptance", () => {
     expect(response.artifactId).toBe(result.artifactId);
     expect(response.artifactFilename).toBe(result.intent.artifactRequest?.filename ?? null);
     expect(response.memoryCandidateIds).toEqual(result.memoryCandidateIds);
+    // 6H §5.3: retrievedMemoryCount is now deliberately included (a bare
+    // count, decided as the "minimum safe" retrieval metadata) -- moved
+    // out of the "excluded fields" block below, which is exactly why this
+    // assertion belongs here now instead of there.
+    expect(response.retrievedMemoryCount).toBe(result.retrievedMemoryCount);
 
     // Excluded fields genuinely absent from the DTO, not just unchecked --
     // confirms the flattening/narrowing actually happened.
     expect(response).not.toHaveProperty("tenantId");
     expect(response).not.toHaveProperty("authorityDecisionId");
     expect(response).not.toHaveProperty("transitionPath");
-    expect(response).not.toHaveProperty("retrievedMemoryCount");
     expect(response).not.toHaveProperty("retrievedMemoryIds");
     expect(response).not.toHaveProperty("intent");
   });
