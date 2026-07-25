@@ -11,6 +11,7 @@ import {
 import { buildIdempotencyKey } from "../../shared/ids.js";
 import type { AuthorityOutcome } from "../../shared/runtimeTypes.js";
 import { resolveAuthorityWithHierarchy } from "../resolveAuthorityWithHierarchy.js";
+import { computeNextFireAt } from "./computeNextFireAt.js";
 import {
   InvalidScheduledTriggerInputError,
   ScheduledTriggerActorNotFoundError,
@@ -263,6 +264,19 @@ export async function createScheduledTrigger(
 ): Promise<CreateScheduledTriggerResult> {
   validateInput(input);
 
+  // Fail fast on a malformed schedule expression, before any DB access --
+  // also the value actually inserted below on the authorized branch. 6I
+  // never computed an initial next_fire_at at all (every row it created
+  // was born with next_fire_at NULL, so 6J's due-query would never have
+  // found it); this closes that gap using the same computeNextFireAt()
+  // logic the poller uses for post-fire recomputation.
+  const initialNextFireAt = computeNextFireAt({
+    scheduleKind: input.scheduleKind,
+    scheduleExpression: input.scheduleExpression,
+    timezone: input.timezone ?? null,
+    from: new Date(),
+  });
+
   const idempotencyKey = buildIdempotencyKey([
     input.tenantId,
     input.owningActorId,
@@ -358,8 +372,8 @@ export async function createScheduledTrigger(
         `INSERT INTO scheduled_triggers
            (id, tenant_id, workspace_id, project_id, owning_actor_id, created_by_actor_id,
             authority_decision_id, status, schedule_kind, schedule_expression, timezone,
-            synthetic_message_content, trigger_category, idempotency_key, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$14)
+            synthetic_message_content, trigger_category, next_fire_at, idempotency_key, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$15,$15)
          ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
          RETURNING *`,
         [
@@ -375,6 +389,7 @@ export async function createScheduledTrigger(
           input.timezone ?? null,
           input.syntheticMessageContent,
           input.triggerCategory ?? null,
+          initialNextFireAt.toISOString(),
           idempotencyKey,
           now,
         ],
