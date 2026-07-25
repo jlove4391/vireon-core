@@ -29,7 +29,15 @@ const MAX_TOKENS = 1024;
 // enough user message truncated the string before any of those fixed
 // fields were even reached, silently dropping the decided authority
 // outcome and the closing instruction from what the model actually sees.
-const MAX_USER_MESSAGE_CHARS = 8_000;
+//
+// 100,000 chars is a deliberate fraction of Claude Haiku 4.5's 200k-token
+// context window, not an arbitrary small number: at a conservative ~4
+// chars/token, 100,000 chars is roughly 25,000 tokens -- about an eighth
+// of the window -- leaving generous headroom for the system prompt
+// (persona fields), retrieved memory snippets, and the model's own
+// response budget (MAX_TOKENS), none of which should ever be crowded out
+// by a single user message.
+const MAX_USER_MESSAGE_CHARS = 100_000;
 
 function boundToTokenBudget(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;

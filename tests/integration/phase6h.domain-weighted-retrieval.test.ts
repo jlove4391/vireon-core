@@ -207,9 +207,13 @@ describe("Phase 6H: retrieveRelevantMemory query construction (unit, no DB)", ()
 
 describe("Phase 6H: token budget and prompt caching (unit, no DB)", () => {
   describe("5.4: token budget hook", () => {
-    it("7. buildPrompt() truncates an oversized user message rather than sending it unbounded", async () => {
+    it("7. buildPrompt() truncates a user message over the 100,000-char budget rather than sending it unbounded", async () => {
       const { buildPrompt } = await import("../../src/elora/llm/anthropicProvider.js");
-      const oversized = "x".repeat(20_000);
+      // 150,000 -- clear of the 100,000-char cap, not just clear of the
+      // old 8,000-char one. 20,000 (the old fixture length) is now well
+      // *under* the cap and would silently stop exercising truncation at
+      // all after the cap was raised.
+      const oversized = "x".repeat(150_000);
 
       const { user } = buildPrompt({
         persona: ELORA_PERSONA,
@@ -222,7 +226,7 @@ describe("Phase 6H: token budget and prompt caching (unit, no DB)", () => {
         retrievedMemorySnippets: [],
       });
 
-      expect(user.length).toBeLessThan(20_000);
+      expect(user.length).toBeLessThan(150_000);
       expect(user).toContain("truncated");
     });
 
@@ -235,9 +239,9 @@ describe("Phase 6H: token budget and prompt caching (unit, no DB)", () => {
     // model actually sees. Test 7 above didn't catch this: it only checked
     // that truncation happened and contained the word "truncated," not
     // that the fixed fields survived it.
-    it("7c. an oversized user message never drops the decided outcome or closing instruction -- only the raw message content is bounded, not the whole assembled prompt", async () => {
+    it("7c. a user message over the 100,000-char budget never drops the decided outcome or closing instruction -- only the raw message content is bounded, not the whole assembled prompt", async () => {
       const { buildPrompt } = await import("../../src/elora/llm/anthropicProvider.js");
-      const oversized = "x".repeat(20_000);
+      const oversized = "x".repeat(150_000);
 
       const { user } = buildPrompt({
         persona: ELORA_PERSONA,
@@ -254,6 +258,29 @@ describe("Phase 6H: token budget and prompt caching (unit, no DB)", () => {
       expect(user).toContain("Task type: planning");
       expect(user).toContain("Final status: READY_TO_ACT");
       expect(user).toContain("Write the in-character reply now, describing only the above.");
+    });
+
+    // Raising the cap from 8,000 to 100,000 chars is only a real fix if
+    // messages that fit comfortably under the new cap actually pass
+    // through whole -- this pins that down explicitly, not just inferred
+    // from 7b's much smaller fixture never having been at risk either way.
+    it("7d. a user message just under the 100,000-char budget passes through completely unbounded, not truncated", async () => {
+      const { buildPrompt } = await import("../../src/elora/llm/anthropicProvider.js");
+      const justUnderCap = "y".repeat(99_999);
+
+      const { user } = buildPrompt({
+        persona: ELORA_PERSONA,
+        userMessageContent: justUnderCap,
+        taskType: "planning",
+        authorityOutcome: "act_and_report",
+        reason: "test reason",
+        finalWorkOrderStatus: "READY_TO_ACT",
+        toolResult: null,
+        retrievedMemorySnippets: [],
+      });
+
+      expect(user).not.toContain("truncated");
+      expect(user).toContain(justUnderCap);
     });
 
     it("7b. buildPrompt() leaves an ordinary-sized message untouched", async () => {
