@@ -126,6 +126,64 @@ describe("Phase 6H: Domain-Weighted Retrieval & Exposure acceptance (DB-backed)"
   });
 });
 
+describe("Phase 6H: retrieveRelevantMemory query construction (unit, no DB)", () => {
+  describe("5.1/5.2: the actual guarantee -- query text/params, not just result rows", () => {
+    // Tests 1-4 above (DB-backed) prove result rows come back the same way
+    // under one seeded dataset -- a real but weaker claim than "the query
+    // itself is unaffected." A regression that relies on SQL NULL
+    // semantics instead of the TypeScript-level conditional in
+    // retrieveRelevantMemory.ts (e.g. always appending a `(scope = $N)`
+    // clause bound to null, rather than omitting the clause) would likely
+    // still pass those tests -- `scope = NULL` is never true in SQL, so it
+    // degrades to a no-op that preserves ordering on a small dataset. This
+    // inspects the actual SQL string and params sent to client.query() via
+    // a mocked withTenantTransaction, so it fails on that exact regression
+    // even if every row-level test above happens not to notice it.
+    it("9. omitting requestingPersonaDomain and passing null produce byte-identical SQL and params, with no domain-ranking clause present", async () => {
+      vi.resetModules();
+      const queryMock = vi.fn().mockResolvedValue({ rows: [] });
+      vi.doMock("../../src/db/withTenantTransaction.js", () => ({
+        withTenantTransaction: async (
+          _tenantId: string,
+          callback: (client: { query: typeof queryMock }) => unknown,
+        ) => callback({ query: queryMock }),
+      }));
+
+      const { retrieveRelevantMemory: mockedRetrieve } = await import("../../src/elora/retrieveRelevantMemory.js");
+
+      await mockedRetrieve({ tenantId: "t1", queryText: "hello world" });
+      const omittedCall = queryMock.mock.calls[0];
+
+      queryMock.mockClear();
+      await mockedRetrieve({ tenantId: "t1", queryText: "hello world", requestingPersonaDomain: null });
+      const nullCall = queryMock.mock.calls[0];
+
+      // Not "produced the same rows" -- the actual SQL text and param
+      // array are identical, byte-for-byte, between omitted and null.
+      expect(omittedCall?.[0]).toBe(nullCall?.[0]);
+      expect(omittedCall?.[1]).toEqual(nullCall?.[1]);
+
+      // And the guarantee itself, stated directly: no ranking clause on
+      // `scope` anywhere in that SQL, and the ORDER BY is exactly what it
+      // was before 6H.
+      expect(omittedCall?.[0]).not.toMatch(/scope\s*=/);
+      expect(omittedCall?.[0]).toMatch(/ORDER BY created_at DESC/);
+
+      // Contrast case: a real domain DOES change the query -- proves the
+      // mock/assertions above are actually sensitive to this, not just
+      // trivially true regardless of input.
+      queryMock.mockClear();
+      await mockedRetrieve({ tenantId: "t1", queryText: "hello world", requestingPersonaDomain: "finance" });
+      const domainCall = queryMock.mock.calls[0];
+      expect(domainCall?.[0]).toMatch(/\(scope = \$\d+\) DESC, created_at DESC/);
+      expect((domainCall?.[1] as unknown[])?.length).toBe(((nullCall?.[1] as unknown[])?.length ?? 0) + 1);
+
+      vi.doUnmock("../../src/db/withTenantTransaction.js");
+      vi.resetModules();
+    });
+  });
+});
+
 describe("Phase 6H: token budget and prompt caching (unit, no DB)", () => {
   describe("5.4: token budget hook", () => {
     it("7. buildPrompt() truncates an oversized user message rather than sending it unbounded", async () => {
