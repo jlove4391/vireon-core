@@ -1,24 +1,18 @@
+import type { PersonaConfig } from "@vireon/persona-config";
 import type { AuthorityOutcome } from "../../shared/runtimeTypes.js";
 import type { WorkOrderStatus } from "../../state/workOrderState.js";
 
-/**
- * The prompt-relevant subset of a persona's identity -- deliberately not
- * the frontend's PersonaConfig (apps/web/src/lib/personaConfig.ts), which
- * also carries UI-only fields (crestAssetPath, accentColor) the backend has
- * no use for and must not depend on apps/web to get. Backend-owned mirrors
- * live in personaVoiceProfiles.ts, same deliberate-duplication precedent
- * 6E established for packages/contracts's enums.
- */
-export interface LlmPersonaVoiceProfile {
-  name: string;
-  formalTitle: string;
-  corporateRole: string;
-  voiceTone: string[];
-  pronouns: string;
-}
-
 export interface LlmResponseContext {
-  persona: LlmPersonaVoiceProfile;
+  /**
+   * Prep Pass (Persona Identity Consolidation): the full, canonical
+   * PersonaConfig, not a backend-only voice-profile subset. buildPrompt()
+   * only ever reads the prompt-relevant fields (name, formalTitle,
+   * corporateRole, voiceTone, pronouns) off of it -- the extra fields
+   * (crestAssetPath, accentColor, etc.) simply go unused here, same
+   * acceptable "one complete type, not every field read by every
+   * consumer" pattern 6E's EloraMessageResponseSchema already established.
+   */
+  persona: PersonaConfig;
   userMessageContent: string;
   taskType: string;
   authorityOutcome: AuthorityOutcome;

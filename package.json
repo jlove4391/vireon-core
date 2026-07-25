@@ -33,6 +33,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",
     "@vireon/contracts": "workspace:*",
+    "@vireon/persona-config": "workspace:*",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "ioredis": "^5.4.1",

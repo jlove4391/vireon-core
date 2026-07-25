@@ -5,7 +5,7 @@ import { MessageBubble } from "../../components/MessageBubble";
 import { ActionCard } from "../../components/ActionCard";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
-import type { PersonaConfig } from "../../lib/personaConfig";
+import type { PersonaConfig } from "@vireon/persona-config";
 import { sendEloraMessage, EloraApiError, type EloraMessageResponse } from "../../lib/api";
 import { getStoredThreadId, setStoredThreadId } from "../../lib/threadStorage";
 
