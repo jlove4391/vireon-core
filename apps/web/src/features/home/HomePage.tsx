@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Card } from "../../components/Card";
 import { Button } from "../../components/Button";
-import { ELORA_PERSONA } from "../../lib/personaConfig";
+import { ELORA_PERSONA } from "@vireon/persona-config";
 
 export function HomePage() {
   return (

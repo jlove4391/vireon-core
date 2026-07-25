@@ -3,12 +3,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ELORA_PERSONA, type PersonaConfig } from "@vireon/persona-config";
 import { migrate } from "../../src/db/migrate.js";
 import { pool } from "../../src/db/pool.js";
 import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { generateEloraResponse } from "../../src/elora/generateEloraResponse.js";
-import { ELORA_VOICE_PROFILE } from "../../src/elora/llm/personaVoiceProfiles.js";
-import type { LlmPersonaVoiceProfile, LlmProvider, LlmResponseContext } from "../../src/elora/llm/types.js";
+import type { LlmProvider, LlmResponseContext } from "../../src/elora/llm/types.js";
 import { buildPrompt } from "../../src/elora/llm/anthropicProvider.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
 
@@ -46,7 +46,7 @@ vi.mock("../../src/elora/llm/anthropicProvider.js", async (importOriginal) => {
 
 function baseLlmContext(overrides: Partial<LlmResponseContext> = {}): LlmResponseContext {
   return {
-    persona: ELORA_VOICE_PROFILE,
+    persona: ELORA_PERSONA,
     userMessageContent: "test message",
     taskType: "planning",
     authorityOutcome: "act_and_report",
@@ -131,12 +131,23 @@ describe("Phase 6F: generateEloraResponse -- fallback correctness (unit, no DB, 
 
 describe("Phase 6F: buildPrompt -- persona genericness (unit, no DB)", () => {
   it("4. prompt construction uses the passed persona's own fields, not a hardcoded Elora reference", () => {
-    const throwawayPersona: LlmPersonaVoiceProfile = {
+    // Full PersonaConfig, not just the prompt-relevant subset -- proves
+    // buildPrompt() only reads the fields it needs off the consolidated
+    // type and tolerates (ignores) the rest, same as it does for the real
+    // ELORA_PERSONA's unused-here fields (crestAssetPath, accentColor, etc.).
+    const throwawayPersona: PersonaConfig = {
+      id: "test-persona-zeta",
       name: "Test Persona Zeta",
       formalTitle: "Grand Archivist of Nowhere",
       corporateRole: "Chief Testing Officer",
       voiceTone: ["Bone-dry", "Deadpan"],
+      crestAssetPath: "/assets/crests/test-persona-zeta.png",
+      accentColor: { primary: "#000000", secondary: "#ffffff" },
       pronouns: "they/them",
+      genderIdentity: "nonbinary",
+      voiceModelId: null,
+      domain: null,
+      actorName: "Test Persona Zeta",
     };
 
     const throwawayPrompt = buildPrompt(baseLlmContext({ persona: throwawayPersona }));
@@ -147,7 +158,7 @@ describe("Phase 6F: buildPrompt -- persona genericness (unit, no DB)", () => {
     expect(throwawayPrompt.system).toContain("they/them");
     expect(throwawayPrompt.system).not.toContain("Elora");
 
-    const eloraPrompt = buildPrompt(baseLlmContext({ persona: ELORA_VOICE_PROFILE }));
+    const eloraPrompt = buildPrompt(baseLlmContext({ persona: ELORA_PERSONA }));
     expect(eloraPrompt.system).toContain("Elora");
     expect(eloraPrompt.system).not.toBe(throwawayPrompt.system);
   });

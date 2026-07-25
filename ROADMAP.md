@@ -29,6 +29,17 @@ reference only.*
   needs them is actually built, not guessed at in advance. See §3's 6G/6H
   entries for the full reasoning — worth reading in full if this needs to
   be revisited later without full context in memory.
+- **An unlettered Prep Pass — Persona Identity Consolidation — was
+  discovered and completed during 6H's own planning pass**, immediately
+  before 6H's actual work. While designing 6H, it became clear the backend
+  had no single canonical `PersonaConfig` definition — three independent
+  fragments had grown across 6A, 6C, and 6F. This pass consolidated them
+  into one shared `packages/persona-config` package, generalized the
+  actor-lookup mechanism, and added a live-data contract test. Corrective/
+  structural work, not new capability, so it consumed no phase letter and
+  shifted no other phase's numbering. See §3 for details. 6H proceeds next
+  under its original name and number, unchanged, and can now read
+  `persona.domain` directly from the consolidated config.
 
 ## 2. Status — Completed and Merged
 
@@ -80,6 +91,52 @@ later costs nothing (no database change, just a new persona's code using
 a new word for the first time). `PersonaConfig` already carries a
 `domain` field for this purpose (null for Elora, who is executive-tier
 and sees the full memory pool regardless of label).
+
+### Prep Pass — Persona Identity Consolidation (complete)
+
+Discovered mid-planning for 6H, not originally on the roadmap under this
+name: designing 6H's actual work ("domain-weighted retrieval") surfaced
+that the backend had no single, canonical definition of persona identity
+at all — three independent fragments had grown, one per phase that
+happened to need a piece of it. 6A defined `PersonaConfig`, but only on
+the frontend (`apps/web/src/lib/personaConfig.ts`). 6C needed to know
+"which `actors` row is Elora" and built its own lookup
+(`resolveEloraPersonaActorId()`), hardcoded to the literal name `"Elora"`.
+6F needed her voice/tone for LLM prompting and built a second, separate
+backend structure (`ELORA_VOICE_PROFILE`), genuinely duplicated data, not
+shared with `PersonaConfig` at all.
+
+This pass consolidated all three into one canonical `PersonaConfig` type
+and `ELORA_PERSONA` value, in a new shared `packages/persona-config`
+package imported by both frontend and backend; deleted the frontend's
+local copy and the backend's separate `ELORA_VOICE_PROFILE`; generalized
+`resolveEloraPersonaActorId()` into `resolvePersonaActorId()`, a real
+parameterized lookup keyed on a new, declared `PersonaConfig.actorName`
+field rather than a hardcoded name; and added a live-data contract test
+that verifies, against the real seeded `actors` table (not a mock), that
+every known `PersonaConfig`'s `actorName` actually resolves to a real
+row — structured to catch a future persona's actorName drift too, not
+just Elora's today. Pure structural relocation: no persona's actual
+identity content (title, tone, domain, authority scope) changed.
+
+Corrective/structural work, not new capability — same category as the
+"Prep Pass — Persona-Generic Renaming" already scheduled below, so it
+consumed no phase letter and shifted no other phase's numbering. 6H
+follows immediately, under its original name and number, unchanged.
+
+A pre-6H gate review of this pass, before it was allowed to land, found
+that `resolvePersonaActorId()`'s dropped `hierarchy_tier = 'executive'`
+filter left `(tenant_id, actor_name)` uniqueness — the property the
+function's correctness now depends on — enforced only by
+`seedPersonaRoster.ts`'s own convention, not by the database. The review
+also found the pass's own new test for this (`5. live-data contract`)
+only ever observed that convention's output, not the database's actual
+behavior — a test that would stay green even if the guarantee it claimed
+to prove didn't hold. `migrations/0008_actor_name_uniqueness.sql` closes
+that gap with a real `UNIQUE (tenant_id, actor_name)` constraint, and a
+new test (`5c`) exercises it directly by attempting a genuine duplicate
+insert and asserting Postgres rejects it. Landed as part of this same
+pass, not a separate one.
 
 ### 6H — Domain-Weighted Retrieval & Exposure (renumbered; was informally referenced as "6G's second half" during 6G's planning)
 

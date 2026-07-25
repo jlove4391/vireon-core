@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ELORA_PERSONA, type PersonaConfig } from "@vireon/persona-config";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import { createWorkOrder, type CreateWorkOrderResult } from "../state/createWorkOrder.js";
 import { transitionWorkOrder } from "../state/transitionWorkOrder.js";
@@ -13,7 +14,6 @@ import { registerCoreTools } from "../tools/index.js";
 import { dispatchTool } from "./dispatchTool.js";
 import { EloraPersonaActorNotFoundError } from "./errors.js";
 import { generateEloraResponse } from "./generateEloraResponse.js";
-import { ELORA_VOICE_PROFILE } from "./llm/personaVoiceProfiles.js";
 import { normalizeIngress } from "./normalizeIngress.js";
 import { persistMessage } from "./persistMessage.js";
 import { parseIntent } from "./parseIntent.js";
@@ -27,23 +27,43 @@ import { AUTHORITY_OUTCOME_TO_REASON_CODE, type EloraIngestionResult, type Elora
 import { writeBlockedReceipt } from "./writeBlockedReceipt.js";
 import { writeEloraReceipt } from "./writeEloraReceipt.js";
 
-// Phase 6C §6: only ELORA has a live ingestion pipeline today, so the
-// hierarchy walk's starting actor is hardcoded to her persona actor id --
-// a stated, known limitation, not a silent gap. This is fully generic from
-// resolveAuthorityWithHierarchy.ts's point of view (it just receives an
-// actor id); the ELORA-specific lookup lives here, at the call site, and
-// only runs lazily when a walk is actually about to happen (an ordinary,
-// non-floor-protected escalate) -- not on every request. True persona
-// parameterization is 6F's PersonaConfig integration, not this phase's.
-async function resolveEloraPersonaActorId(tenantId: string): Promise<string> {
-  return withTenantTransaction(tenantId, async (client) => {
+/**
+ * Prep Pass (Persona Identity Consolidation): generalized from the former
+ * ELORA-hardcoded resolveEloraPersonaActorId(). Resolves any PersonaConfig's
+ * corresponding actors row via the real, declared join key --
+ * persona.actorName -- instead of a literal name match. (tenant_id,
+ * actor_name) is enforced tenant-unique at the database level by
+ * migrations/0008_actor_name_uniqueness.sql, not merely true by
+ * seedPersonaRoster.ts's convention, so the prior query's additional
+ * `hierarchy_tier = 'executive'` condition is dropped here rather than
+ * hardcoded into a function meant to work for any persona tier.
+ *
+ * Dropping that condition is intentional generalization, not a dropped
+ * safety check: it was necessary so non-executive-tier personas (Inner
+ * Circle, Outer Circle, Special Envoy) can resolve at all -- a literal
+ * `hierarchy_tier = 'executive'` filter would make this function permanently
+ * Elora-only, defeating the point of generalizing it. The uniqueness
+ * constraint above is what actually keeps this safe, not the dropped tier
+ * check, which was never a uniqueness guarantee to begin with.
+ *
+ * Phase 6C §6: only ELORA has a live ingestion pipeline today, so the
+ * hierarchy walk's starting actor is still only ever called with her
+ * persona today -- a stated, known limitation, not a silent gap. This is
+ * fully generic from resolveAuthorityWithHierarchy.ts's point of view (it
+ * just receives an actor id); the persona-specific lookup lives here, at
+ * the call site, and only runs lazily when a walk is actually about to
+ * happen (an ordinary, non-floor-protected escalate) -- not on every
+ * request.
+ */
+export async function resolvePersonaActorId(input: { tenantId: string; persona: PersonaConfig }): Promise<string> {
+  return withTenantTransaction(input.tenantId, async (client) => {
     const result = await client.query<{ id: string }>(
-      "SELECT id FROM actors WHERE tenant_id = $1 AND actor_name = 'Elora' AND hierarchy_tier = 'executive'",
-      [tenantId],
+      "SELECT id FROM actors WHERE tenant_id = $1 AND actor_name = $2",
+      [input.tenantId, input.persona.actorName],
     );
     const row = result.rows[0];
     if (!row) {
-      throw new EloraPersonaActorNotFoundError(tenantId, "Elora");
+      throw new EloraPersonaActorNotFoundError(input.tenantId, input.persona.actorName);
     }
     return row.id;
   });
@@ -253,7 +273,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     content: persisted.content,
     taskType: intent.task_type,
     resolvedProjectId: context.projectId,
-    resolveStartingActorId: () => resolveEloraPersonaActorId(context.tenantId),
+    resolveStartingActorId: () => resolvePersonaActorId({ tenantId: context.tenantId, persona: ELORA_PERSONA }),
   });
 
   // §8.3: should be structurally impossible given the closed dispatch set
@@ -346,7 +366,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     responseText = await generateEloraResponse({
       deterministicFallback: executionResult.responseText,
       context: {
-        persona: ELORA_VOICE_PROFILE,
+        persona: ELORA_PERSONA,
         userMessageContent: persisted.content,
         taskType: intent.task_type,
         authorityOutcome: authority.outcome,
@@ -378,7 +398,7 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     responseText = await generateEloraResponse({
       deterministicFallback: synthesized.responseText,
       context: {
-        persona: ELORA_VOICE_PROFILE,
+        persona: ELORA_PERSONA,
         userMessageContent: persisted.content,
         taskType: intent.task_type,
         authorityOutcome: authority.outcome,
