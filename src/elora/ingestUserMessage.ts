@@ -206,6 +206,11 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
   const retrievedMemory = await retrieveRelevantMemory({
     tenantId: context.tenantId,
     queryText: persisted.content,
+    // 6H §5.2: Elora's domain is null (executive-tier, full unweighted
+    // pool) -- retrieveRelevantMemory() turns that into no ranking clause
+    // at all, so this call is unaffected by 6H's addition, structurally,
+    // not by a special case here.
+    requestingPersonaDomain: ELORA_PERSONA.domain,
   });
 
   const intent = parseIntent(persisted.content);

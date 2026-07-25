@@ -11,6 +11,39 @@ import type { LlmProvider, LlmResponseContext } from "./types.js";
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 1024;
 
+// 6H §5.4: token budget / context isolation, decided as a small addition at
+// this one call site -- not a reusable per-persona execution-context
+// primitive (no second concurrent persona execution exists in any live
+// path yet to generalize against; extend when one does). A rough,
+// character-based ceiling, not a real tokenizer -- the decision explicitly
+// scoped this small, not a heavier tokenizer dependency. The user-message
+// side of the prompt is the only genuinely unbounded input (persona fields
+// are fixed constants, retrievedMemorySnippets is already capped at 5
+// records x 200 chars by the caller).
+//
+// PR #19 review fix: this bounds ONLY the raw userMessageContent component,
+// applied before it's embedded in the "Original request" line and joined
+// with the fixed-size control fields (task type, decided outcome, reason,
+// final status, closing instruction). Bounding the fully-assembled joined
+// string instead -- the original version of this code -- meant a long
+// enough user message truncated the string before any of those fixed
+// fields were even reached, silently dropping the decided authority
+// outcome and the closing instruction from what the model actually sees.
+//
+// 100,000 chars is a deliberate fraction of Claude Haiku 4.5's 200k-token
+// context window, not an arbitrary small number: at a conservative ~4
+// chars/token, 100,000 chars is roughly 25,000 tokens -- about an eighth
+// of the window -- leaving generous headroom for the system prompt
+// (persona fields), retrieved memory snippets, and the model's own
+// response budget (MAX_TOKENS), none of which should ever be crowded out
+// by a single user message.
+const MAX_USER_MESSAGE_CHARS = 100_000;
+
+function boundToTokenBudget(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n[... truncated, ${text.length} chars total, over the ${maxChars}-char prompt budget]`;
+}
+
 /**
  * Generic, persona-driven prompt construction -- never a hardcoded
  * reference to "Elora" in this function. Same discipline PersonaConsole.tsx
@@ -40,8 +73,10 @@ export function buildPrompt(context: LlmResponseContext): { system: string; user
     "- Keep the reply concise: a few sentences at most.",
   ].join("\n");
 
+  const boundedUserMessage = boundToTokenBudget(context.userMessageContent, MAX_USER_MESSAGE_CHARS);
+
   const userLines = [
-    `Original request: "${context.userMessageContent}"`,
+    `Original request: "${boundedUserMessage}"`,
     `Task type: ${context.taskType}`,
     `Decided outcome: ${context.authorityOutcome}`,
     `Reason: ${context.reason}`,
@@ -80,7 +115,15 @@ export class AnthropicProvider implements LlmProvider {
       {
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system,
+        // 6H §5.5: system-string half of prompt caching only (decided --
+        // no tool schemas are ever sent to a model in this codebase today;
+        // tool selection is fully deterministic via dispatchTool.ts, so
+        // there's nothing on that half to cache yet). system is built
+        // purely from fixed persona fields (name/formalTitle/corporateRole/
+        // pronouns/voiceTone) -- byte-identical across every call for a
+        // given persona, never touched by per-call content -- so it's a
+        // genuinely stable prefix, not merely typically-stable.
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: user }],
       },
       { timeout: timeoutMs },

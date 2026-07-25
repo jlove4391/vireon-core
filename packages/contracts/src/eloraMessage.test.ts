@@ -19,6 +19,7 @@ function validResponsePayload(): Record<string, unknown> {
     artifactId: null,
     artifactFilename: null,
     memoryCandidateIds: [],
+    retrievedMemoryCount: 0,
   };
 }
 
@@ -75,6 +76,15 @@ describe("EloraMessageResponseSchema", () => {
   it("2e. rejects a non-uuid id field", () => {
     const result = EloraMessageResponseSchema.safeParse({ ...validResponsePayload(), messageId: "not-a-uuid" });
     expect(result.success).toBe(false);
+  });
+
+  it("2f. rejects a negative or non-integer retrievedMemoryCount", () => {
+    expect(EloraMessageResponseSchema.safeParse({ ...validResponsePayload(), retrievedMemoryCount: -1 }).success).toBe(
+      false,
+    );
+    expect(EloraMessageResponseSchema.safeParse({ ...validResponsePayload(), retrievedMemoryCount: 1.5 }).success).toBe(
+      false,
+    );
   });
 });
 
