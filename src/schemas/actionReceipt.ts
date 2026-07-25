@@ -153,6 +153,23 @@ const eloraRequestBlockedReceiptSchema = receiptBaseSchema.extend({
   }),
 });
 
+// Phase 6I -- trigger creation is a direct structured service call
+// (src/elora/triggers/createScheduledTrigger.ts), not a WorkOrder round
+// trip, so this receipt's payload references the created row directly
+// rather than a work_order_id (contrast with artifact_created, which is
+// always WorkOrder-shaped). Written only on the authorized (act /
+// act_and_report) path -- a blocked authority outcome never creates a
+// scheduled_triggers row, so it never reaches this receipt either.
+const triggerCreatedReceiptSchema = receiptBaseSchema.extend({
+  receipt_type: z.literal("trigger_created"),
+  payload: z.object({
+    scheduled_trigger_id: uuidSchema,
+    owning_actor_id: z.string().min(1),
+    schedule_kind: z.string().min(1),
+    outcome: authorityOutcomeSchema,
+  }),
+});
+
 export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   workOrderCreatedReceiptSchema,
   authorityDecidedReceiptSchema,
@@ -167,6 +184,7 @@ export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   receiptSupersededReceiptSchema,
   eloraIngestionCompletedReceiptSchema,
   eloraRequestBlockedReceiptSchema,
+  triggerCreatedReceiptSchema,
 ]);
 
 export type ActionReceipt = z.infer<typeof actionReceiptSchema>;
