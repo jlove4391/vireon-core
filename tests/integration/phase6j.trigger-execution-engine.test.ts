@@ -136,10 +136,43 @@ describe("Phase 6J: Trigger Execution Engine acceptance", () => {
 
     it("5. named superior (the actual vulnerability case): a subordinate naming their own boss as owner must block", async () => {
       // Darius naming Valtrix (his real superior) as owner. Structurally
-      // impossible to authorize correctly, since Darius can never appear
-      // as an ancestor of Valtrix -- the hierarchy has no cycles.
+      // impossible to authorize correctly given an acyclic hierarchy,
+      // since Darius can never appear as an ancestor of Valtrix.
       const authorized = await withTenantTransaction(ctx.tenantId, (client) =>
         isOwnershipAssignmentAuthorized(client, ctx.tenantId, ctx.dariusId, ctx.valtrixId),
+      );
+      expect(authorized).toBe(false);
+    });
+
+    it("5b. a genuine cycle in reports_to_actor_id (application-level convention only, not DB-enforced -- verified directly against pg_constraint/pg_trigger) terminates with false rather than looping forever", async () => {
+      // actors carries no CHECK constraint or trigger preventing a cycle
+      // -- only a tenant-scoped FK and tier-vocabulary CHECKs. Constructed
+      // via two UPDATEs (each individually valid against the FK at the
+      // time it runs) since a single INSERT can't point at a
+      // not-yet-existing row.
+      const cycleActorA = randomUUID();
+      const cycleActorB = randomUUID();
+      await withTenantTransaction(ctx.tenantId, async (client) => {
+        await client.query(
+          `INSERT INTO actors (id, tenant_id, actor_type, actor_name, actor_role, hierarchy_tier, reports_to_actor_id)
+           VALUES ($1, $2, 'agent', $3, 'cycle-test', 'outer_circle', $4)`,
+          [cycleActorA, ctx.tenantId, `Cycle Test Actor A ${cycleActorA}`, ctx.sovereignId],
+        );
+        await client.query(
+          `INSERT INTO actors (id, tenant_id, actor_type, actor_name, actor_role, hierarchy_tier, reports_to_actor_id)
+           VALUES ($1, $2, 'agent', $3, 'cycle-test', 'outer_circle', $4)`,
+          [cycleActorB, ctx.tenantId, `Cycle Test Actor B ${cycleActorB}`, cycleActorA],
+        );
+        // Close the cycle: A now reports to B, and B already reports to A.
+        await client.query("UPDATE actors SET reports_to_actor_id = $1 WHERE id = $2 AND tenant_id = $3", [
+          cycleActorB,
+          cycleActorA,
+          ctx.tenantId,
+        ]);
+      });
+
+      const authorized = await withTenantTransaction(ctx.tenantId, (client) =>
+        isOwnershipAssignmentAuthorized(client, ctx.tenantId, ctx.jynxId, cycleActorA),
       );
       expect(authorized).toBe(false);
     });
@@ -161,6 +194,21 @@ describe("Phase 6J: Trigger Execution Engine acceptance", () => {
       const from = new Date("2026-08-03T08:00:00.000Z");
       const next = computeNextFireAt({ scheduleKind: "interval", scheduleExpression: "P1D", timezone: null, from });
       expect(next.toISOString()).toBe("2026-08-04T08:00:00.000Z");
+    });
+
+    it("7b. interval: a month-end date crossing into a shorter month clamps to that month's last day, not a native Date rollover into the following month", () => {
+      // 2026 is not a leap year -- February has 28 days. Date's native
+      // setUTCMonth would otherwise turn "Jan 31 + 1 month" into "Feb 31"
+      // -> silently normalized to Mar 3.
+      const from = new Date("2026-01-31T08:00:00.000Z");
+      const next = computeNextFireAt({ scheduleKind: "interval", scheduleExpression: "P1M", timezone: null, from });
+      expect(next.toISOString()).toBe("2026-02-28T08:00:00.000Z");
+    });
+
+    it("7c. interval: the same month-end overflow into a leap February clamps to Feb 29, not Feb 28 or a rollover into March", () => {
+      const from = new Date("2028-01-31T08:00:00.000Z"); // 2028 is a leap year
+      const next = computeNextFireAt({ scheduleKind: "interval", scheduleExpression: "P1M", timezone: null, from });
+      expect(next.toISOString()).toBe("2028-02-29T08:00:00.000Z");
     });
 
     it("8. one_off: returns the parsed expression itself, independent of 'from'", () => {
