@@ -170,6 +170,27 @@ const triggerCreatedReceiptSchema = receiptBaseSchema.extend({
   }),
 });
 
+// Phase 6J -- written whenever the poller finds a trigger due but declines
+// to fire it: either the firing-time ownership guard rejected the
+// created_by_actor_id/owning_actor_id pair, or the Elora-only restriction
+// rejected a non-Elora owner. Nothing is created on this branch (no
+// WorkOrder, no AuthorityDecision -- this is a rejection that happens
+// before ingestUserMessage() is ever called), so work_order_id and
+// authority_decision_id both stay null on the shared base. Keyed by
+// (tenant_id, trigger_id, occurrence_timestamp, "trigger_fire_skipped") so
+// a trigger that stays stuck/blocked across many poll cycles produces
+// exactly one receipt per occurrence, not one per poll cycle.
+const triggerFireSkippedReceiptSchema = receiptBaseSchema.extend({
+  receipt_type: z.literal("trigger_fire_skipped"),
+  payload: z.object({
+    scheduled_trigger_id: uuidSchema,
+    owning_actor_id: z.string().min(1),
+    created_by_actor_id: z.string().min(1),
+    reason: z.enum(["ownership_unauthorized", "owner_not_elora"]),
+    occurrence_timestamp: z.string().datetime(),
+  }),
+});
+
 export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   workOrderCreatedReceiptSchema,
   authorityDecidedReceiptSchema,
@@ -185,6 +206,7 @@ export const actionReceiptSchema = z.discriminatedUnion("receipt_type", [
   eloraIngestionCompletedReceiptSchema,
   eloraRequestBlockedReceiptSchema,
   triggerCreatedReceiptSchema,
+  triggerFireSkippedReceiptSchema,
 ]);
 
 export type ActionReceipt = z.infer<typeof actionReceiptSchema>;

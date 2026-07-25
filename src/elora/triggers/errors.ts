@@ -36,3 +36,13 @@ export class ScheduledTriggerReceiptWriteError extends ScheduledTriggerError {
     this.name = "ScheduledTriggerReceiptWriteError";
   }
 }
+
+export class InvalidScheduleExpressionError extends ScheduledTriggerError {
+  constructor(
+    public readonly scheduleExpression: string,
+    public readonly scheduleKind: string,
+  ) {
+    super(`Invalid ${scheduleKind} schedule expression: "${scheduleExpression}"`);
+    this.name = "InvalidScheduleExpressionError";
+  }
+}

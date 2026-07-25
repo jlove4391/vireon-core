@@ -1,0 +1,15 @@
+-- Vireon CORE Phase 6J: trigger execution engine -- schema addition.
+--
+-- 6I did not anticipate a persistent Thread per trigger. 6J needs one:
+-- every firing of the same trigger reuses the SAME thread and passes a
+-- deterministic sourceCorrelationId derived from (tenant_id, trigger_id,
+-- occurrence_timestamp). persistMessage.ts's existing
+-- (tenant_id, thread_id, source_correlation_id) dedup then returns the
+-- same messageId on a retried occurrence, which makes createWorkOrder()'s
+-- existing internal idempotency-key derivation land on the same key
+-- automatically -- no changes needed to Phase 3/5's tested ingestion code.
+--
+-- Nullable and created lazily (on a trigger's first successful fire), not
+-- eagerly at 6I creation time -- a trigger that's created but never fires
+-- (paused, revoked, or simply not yet due) has no need for a Thread yet.
+ALTER TABLE scheduled_triggers ADD COLUMN thread_id uuid REFERENCES threads(id);

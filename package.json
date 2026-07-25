@@ -25,16 +25,19 @@
     "test:phase6f": "vitest run tests/integration/phase6f.llm-integration.test.ts",
     "test:phase6g": "vitest run tests/integration/phase6g.memory-review.test.ts",
     "test:phase6i": "vitest run tests/integration/phase6i.scheduled-trigger-creation.test.ts",
+    "test:phase6j": "vitest run tests/integration/phase6j.trigger-execution-engine.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "diagnostics": "tsx tools/diagnostics/index.ts",
     "seed:dev-identity": "tsx scripts/seedDevIdentity.ts",
     "seed:persona-roster": "tsx scripts/seedPersonaRoster.ts",
-    "dev:server": "tsx watch src/http/server.ts"
+    "dev:server": "tsx watch src/http/server.ts",
+    "dev:trigger-poller": "tsx watch scripts/runTriggerPoller.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",
     "@vireon/contracts": "workspace:*",
     "@vireon/persona-config": "workspace:*",
+    "cron-parser": "^5.6.2",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "ioredis": "^5.4.1",
