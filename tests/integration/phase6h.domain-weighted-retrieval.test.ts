@@ -69,6 +69,27 @@ describe("Phase 6H: Domain-Weighted Retrieval & Exposure acceptance (DB-backed)"
       });
       expect(results.map((record) => record.id)).toContain(nonMatching);
     });
+
+    // PR #19 review finding: `scope = $N` is SQL three-valued logic -- a
+    // null-scope row evaluates the comparison to NULL, and Postgres's
+    // default NULL ordering for DESC is NULLS FIRST, so an unmatched
+    // null-scope row would rank ahead of even a genuine domain match.
+    // Seeds the null-scope row *more recently* than the match specifically
+    // so recency alone can't produce the correct answer by accident --
+    // only correct domain-ranking logic gets this right.
+    it("3b. a null-scope record never outranks a genuine domain match, even when the null-scope record is more recent", async () => {
+      const matching = await seedMemoryRecord(ctx.tenantId, "epsilon omega matching term", "finance");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const nullScoped = await seedMemoryRecord(ctx.tenantId, "epsilon omega null scope term", null);
+
+      const results = await retrieveRelevantMemory({
+        tenantId: ctx.tenantId,
+        queryText: "epsilon omega",
+        requestingPersonaDomain: "finance",
+      });
+      const ids = results.map((record) => record.id);
+      expect(ids.indexOf(matching)).toBeLessThan(ids.indexOf(nullScoped));
+    });
   });
 
   describe("5.2: Elora's unweighted access", () => {
@@ -175,7 +196,7 @@ describe("Phase 6H: retrieveRelevantMemory query construction (unit, no DB)", ()
       queryMock.mockClear();
       await mockedRetrieve({ tenantId: "t1", queryText: "hello world", requestingPersonaDomain: "finance" });
       const domainCall = queryMock.mock.calls[0];
-      expect(domainCall?.[0]).toMatch(/\(scope = \$\d+\) DESC, created_at DESC/);
+      expect(domainCall?.[0]).toMatch(/COALESCE\(scope = \$\d+, false\) DESC, created_at DESC/);
       expect((domainCall?.[1] as unknown[])?.length).toBe(((nullCall?.[1] as unknown[])?.length ?? 0) + 1);
 
       vi.doUnmock("../../src/db/withTenantTransaction.js");
@@ -203,6 +224,36 @@ describe("Phase 6H: token budget and prompt caching (unit, no DB)", () => {
 
       expect(user.length).toBeLessThan(20_000);
       expect(user).toContain("truncated");
+    });
+
+    // PR #19 review finding: the original implementation bounded the fully
+    // *assembled* user string, so a userMessageContent long enough to
+    // exceed the budget on its own truncated the string before the fixed
+    // control fields (task type, decided outcome, reason, final status,
+    // closing instruction) were ever reached -- silently dropping the
+    // decided authority outcome and the closing instruction from what the
+    // model actually sees. Test 7 above didn't catch this: it only checked
+    // that truncation happened and contained the word "truncated," not
+    // that the fixed fields survived it.
+    it("7c. an oversized user message never drops the decided outcome or closing instruction -- only the raw message content is bounded, not the whole assembled prompt", async () => {
+      const { buildPrompt } = await import("../../src/elora/llm/anthropicProvider.js");
+      const oversized = "x".repeat(20_000);
+
+      const { user } = buildPrompt({
+        persona: ELORA_PERSONA,
+        userMessageContent: oversized,
+        taskType: "planning",
+        authorityOutcome: "act_and_report",
+        reason: "test reason",
+        finalWorkOrderStatus: "READY_TO_ACT",
+        toolResult: null,
+        retrievedMemorySnippets: [],
+      });
+
+      expect(user).toContain("Decided outcome: act_and_report");
+      expect(user).toContain("Task type: planning");
+      expect(user).toContain("Final status: READY_TO_ACT");
+      expect(user).toContain("Write the in-character reply now, describing only the above.");
     });
 
     it("7b. buildPrompt() leaves an ordinary-sized message untouched", async () => {

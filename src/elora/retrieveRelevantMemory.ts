@@ -62,10 +62,19 @@ export async function retrieveRelevantMemory(input: RetrieveRelevantMemoryInput)
     // Domain-weighted ranking (6H §5.1): a boost term, prepended only when
     // a domain is actually supplied. Absent/null/empty reproduces the
     // pre-6H query exactly -- no clause added, not a no-op clause added.
+    //
+    // PR #19 review fix: `scope = $N` is SQL three-valued logic, so a
+    // null-scope row evaluates to NULL, not false. Postgres's default NULL
+    // ordering for DESC is NULLS FIRST -- meaning a null-scope row would
+    // rank ahead of even a genuine domain match, the opposite of intended.
+    // COALESCE(..., false) normalizes NULL to false before the sort, so a
+    // null-scope row behaves exactly like a non-matching-scope row (ranked
+    // after real matches, interleaved with other non-matches by recency),
+    // not as its own incorrectly-privileged third tier.
     let orderBy = "created_at DESC";
     if (input.requestingPersonaDomain) {
       params.push(input.requestingPersonaDomain);
-      orderBy = `(scope = $${params.length}) DESC, created_at DESC`;
+      orderBy = `COALESCE(scope = $${params.length}, false) DESC, created_at DESC`;
     }
 
     params.push(limit);

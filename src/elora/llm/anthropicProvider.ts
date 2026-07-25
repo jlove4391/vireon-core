@@ -19,9 +19,17 @@ const MAX_TOKENS = 1024;
 // scoped this small, not a heavier tokenizer dependency. The user-message
 // side of the prompt is the only genuinely unbounded input (persona fields
 // are fixed constants, retrievedMemorySnippets is already capped at 5
-// records x 200 chars by the caller) -- this bounds the fully-assembled
-// user text as the actor/persona boundary's actual isolation point.
-const MAX_USER_PROMPT_CHARS = 8_000;
+// records x 200 chars by the caller).
+//
+// PR #19 review fix: this bounds ONLY the raw userMessageContent component,
+// applied before it's embedded in the "Original request" line and joined
+// with the fixed-size control fields (task type, decided outcome, reason,
+// final status, closing instruction). Bounding the fully-assembled joined
+// string instead -- the original version of this code -- meant a long
+// enough user message truncated the string before any of those fixed
+// fields were even reached, silently dropping the decided authority
+// outcome and the closing instruction from what the model actually sees.
+const MAX_USER_MESSAGE_CHARS = 8_000;
 
 function boundToTokenBudget(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
@@ -57,8 +65,10 @@ export function buildPrompt(context: LlmResponseContext): { system: string; user
     "- Keep the reply concise: a few sentences at most.",
   ].join("\n");
 
+  const boundedUserMessage = boundToTokenBudget(context.userMessageContent, MAX_USER_MESSAGE_CHARS);
+
   const userLines = [
-    `Original request: "${context.userMessageContent}"`,
+    `Original request: "${boundedUserMessage}"`,
     `Task type: ${context.taskType}`,
     `Decided outcome: ${context.authorityOutcome}`,
     `Reason: ${context.reason}`,
@@ -78,7 +88,7 @@ export function buildPrompt(context: LlmResponseContext): { system: string; user
 
   userLines.push("Write the in-character reply now, describing only the above.");
 
-  return { system, user: boundToTokenBudget(userLines.join("\n"), MAX_USER_PROMPT_CHARS) };
+  return { system, user: userLines.join("\n") };
 }
 
 /**
