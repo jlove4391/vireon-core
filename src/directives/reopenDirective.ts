@@ -16,6 +16,13 @@ export interface ReopenDirectiveInput {
  * applyDirectiveTransition() core (transitionDirective.ts) targeting
  * OPEN, so the transition graph and its validation live in exactly one
  * place.
+ *
+ * metadata.verb: "reopen" tags this transition's actual intent for
+ * getDirectiveHistory() -- same tagging convention as acceptDirective.ts/
+ * deferDirective.ts/completeDirective.ts/dismissDirective.ts/
+ * expireDirective.ts, so the transitions table records which of the six
+ * named verbs was actually invoked instead of relying on the caller's
+ * free-text `reason` alone.
  */
 export async function reopenDirective(input: ReopenDirectiveInput): Promise<TransitionDirectiveResult> {
   return transitionDirective({
@@ -24,6 +31,6 @@ export async function reopenDirective(input: ReopenDirectiveInput): Promise<Tran
     toState: "OPEN",
     actorId: input.actorId,
     reason: input.reason,
-    metadata: { ...(input.metadata ?? {}), reopenedManually: true },
+    metadata: { ...(input.metadata ?? {}), verb: "reopen" },
   });
 }

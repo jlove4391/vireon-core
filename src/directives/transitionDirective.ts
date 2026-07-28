@@ -90,6 +90,20 @@ export async function applyDirectiveTransition(
   const timestampColumn = DIRECTIVE_STATE_TIMESTAMP_COLUMN[input.toState];
 
   try {
+    // Overwrite, not write-once (decided on review, reversed from an
+    // earlier local-only pass that tried COALESCE/write-once): these five
+    // columns exist specifically as a current-status fast path on the
+    // parent row -- that IS their reason for being denormalized instead of
+    // always requiring a join to operator_directive_transitions. Freezing
+    // completed_at at a directive's first completion would make a
+    // months-stale value the answer to "when did this most recently
+    // complete," which is exactly the question this column exists to
+    // answer quickly. Preserving first-occurrence gains nothing a query
+    // wasn't already paying for: getDirectiveDetail()/getDirectiveHistory()
+    // already hit operator_directive_transitions for the derived counters
+    // regardless, so first-occurrence history is always fully available
+    // there (ORDER BY created_at ASC LIMIT 1) if ever actually needed --
+    // nothing is lost by these five columns reflecting most-recent entry.
     const updateResult = await client.query(
       timestampColumn
         ? `UPDATE operator_directives SET state = $1, last_seen_at = $2, updated_at = $2, ${timestampColumn} = $2
