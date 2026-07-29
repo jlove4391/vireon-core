@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import type { OperatorDirective, OperatorDirectiveTransition, DirectiveState } from "../schemas/operatorDirective.js";
+import { directiveCompletionModeSchema, type DirectiveCompletionMode } from "../schemas/operatorDirective.js";
+import { assertTenantScopedReference } from "./assertTenantScopedReference.js";
 import { assertValidDirectiveTransition, DIRECTIVE_STATE_TIMESTAMP_COLUMN } from "./directiveState.js";
 import { DirectiveNotFoundError, DirectivePersistenceError, InvalidDirectiveInputError, UnsubstantiatedCompletionError } from "./errors.js";
 import { rowToDirective, rowToTransition } from "./rowMappers.js";
 
-export type DirectiveCompletionMode = "operator_attested" | "system_validated";
+export type { DirectiveCompletionMode };
 
 export interface TransitionDirectiveInput {
   tenantId: string;
@@ -71,6 +73,8 @@ export async function applyDirectiveTransition(
     throw new DirectiveNotFoundError(input.directiveId);
   }
 
+  await assertTenantScopedReference(client, "actors", input.actorId, input.tenantId, "actorId");
+
   const fromState = directiveRow.state as DirectiveState;
   assertValidDirectiveTransition(input.directiveId, fromState, input.toState);
 
@@ -80,10 +84,16 @@ export async function applyDirectiveTransition(
     if (!input.completionMode) {
       throw new InvalidDirectiveInputError("completionMode is required when transitioning a Directive to COMPLETED");
     }
-    if (input.completionMode === "system_validated") {
+    const parsedCompletionMode = directiveCompletionModeSchema.safeParse(input.completionMode);
+    if (!parsedCompletionMode.success) {
+      throw new InvalidDirectiveInputError(
+        `completionMode must be one of ${directiveCompletionModeSchema.options.join(", ")}, got "${input.completionMode}"`,
+      );
+    }
+    if (parsedCompletionMode.data === "system_validated") {
       await assertSystemValidatedCompletionSubstantiated(client, input.tenantId, input.directiveId);
     }
-    transitionMetadata = { ...transitionMetadata, completionMode: input.completionMode };
+    transitionMetadata = { ...transitionMetadata, completionMode: parsedCompletionMode.data };
   }
 
   const now = new Date().toISOString();
