@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
+import { assertTenantScopedReference } from "../db/assertTenantScopedReference.js";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import { actionReceiptSchema, type ActionReceipt } from "../schemas/actionReceipt.js";
 import { buildIdempotencyKey } from "../shared/ids.js";
-import { DelegationReceiptWriteError } from "./errors.js";
+import { DelegationReceiptWriteError, StateReferenceNotFoundError } from "./errors.js";
 
 export interface WriteDelegationReceiptInput {
   tenantId: string;
@@ -28,8 +30,30 @@ export interface WriteDelegationReceiptInput {
  * has existed in schema since Phase 1 and had never been written by any
  * production code path.
  */
+async function assertOwnTenant(
+  client: PoolClient,
+  table: "work_orders" | "actors",
+  id: string,
+  tenantId: string,
+  field: string,
+): Promise<void> {
+  return assertTenantScopedReference(client, table, id, tenantId, () => new StateReferenceNotFoundError(field, id));
+}
+
 export async function writeDelegationReceipt(input: WriteDelegationReceiptInput): Promise<ActionReceipt> {
   return withTenantTransaction(input.tenantId, async (client) => {
+    // All four ids below are exported-function parameters this domain does
+    // not otherwise control the origin of -- a plain FK on work_order_id/
+    // actor_id only proves the referenced row exists SOMEWHERE, not that it
+    // belongs to this tenant (src/db/assertTenantScopedReference.ts). No
+    // production caller exists yet, but writeDelegationReceipt() is a
+    // public entry point and must not rely on a future caller having
+    // already checked this.
+    await assertOwnTenant(client, "work_orders", input.parentWorkOrderId, input.tenantId, "parentWorkOrderId");
+    await assertOwnTenant(client, "work_orders", input.childWorkOrderId, input.tenantId, "childWorkOrderId");
+    await assertOwnTenant(client, "actors", input.parentActorId, input.tenantId, "parentActorId");
+    await assertOwnTenant(client, "actors", input.childActorId, input.tenantId, "childActorId");
+
     const now = new Date().toISOString();
     const idempotencyKey = buildIdempotencyKey([
       input.tenantId,

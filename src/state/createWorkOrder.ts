@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import { assertTenantScopedReference } from "../db/assertTenantScopedReference.js";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import { workOrderSchema, type WorkOrder } from "../schemas/workOrder.js";
 import { buildIdempotencyKey } from "../shared/ids.js";
+import { StateReferenceNotFoundError } from "./errors.js";
 
 export interface CreateWorkOrderInput {
   tenantId: string;
@@ -103,6 +105,30 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Crea
   ]);
 
   return withTenantTransaction(input.tenantId, async (client) => {
+    // ownerActorId is the one field on this input this domain does not
+    // itself derive or get DB-level composite-FK protection for --
+    // everything else (threadId, messageId, workspaceId, projectId,
+    // actorId) is already validated tenant-scoped upstream by the sole
+    // caller (ingestUserMessage.ts via resolveContext.ts), and
+    // parentWorkOrderId already has its own tenant-safe protection: it's a
+    // COMPOSITE FK, `(tenant_id, parent_work_order_id) REFERENCES
+    // work_orders (tenant_id, id)` (migrations/0006_delegation.sql:33), so
+    // Postgres itself rejects a cross-tenant reference there -- no
+    // app-level check needed or added. owner_actor_id, by contrast, is a
+    // plain `REFERENCES actors(id)` (migrations/0001_core_foundation.sql:127)
+    // with no tenant awareness at the DB layer, and is optional and
+    // currently unset by the sole caller -- so a future caller supplying it
+    // must not be able to silently persist a cross-tenant reference.
+    if (input.ownerActorId != null) {
+      await assertTenantScopedReference(
+        client,
+        "actors",
+        input.ownerActorId,
+        input.tenantId,
+        () => new StateReferenceNotFoundError("ownerActorId", input.ownerActorId as string),
+      );
+    }
+
     const now = new Date().toISOString();
     const candidateId = randomUUID();
     const ownerActorId = input.ownerActorId ?? input.actorId;
