@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import { assertTenantScopedReference } from "../db/assertTenantScopedReference.js";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import { actionReceiptSchema, type ActionReceipt } from "../schemas/actionReceipt.js";
 import { authorityDecisionSchema, type AuthorityDecision } from "../schemas/authorityDecision.js";
@@ -9,6 +10,7 @@ import type { AuthorityOutcome } from "../shared/runtimeTypes.js";
 import type { WorkOrderStateTransitionRecord } from "./createWorkOrder.js";
 import {
   AuthorityOutcomeMismatchError,
+  StateReferenceNotFoundError,
   TenantScopeViolationError,
   WorkOrderNotFoundError,
 } from "./errors.js";
@@ -123,6 +125,23 @@ async function runTransition(
         );
       }
       const decisionInput = input.authorityDecision;
+
+      // decidingActorId is an optional override -- every other caller
+      // (the common case) leaves it unset and gets input.actorId, which is
+      // already tenant-validated upstream by this call's own caller. When
+      // a caller DOES supply an override, a plain FK on deciding_actor_id
+      // only proves that actor exists SOMEWHERE, not that it belongs to
+      // this tenant, so it must be checked here rather than trusted.
+      if (decisionInput.decidingActorId != null) {
+        await assertTenantScopedReference(
+          client,
+          "actors",
+          decisionInput.decidingActorId,
+          input.tenantId,
+          () => new StateReferenceNotFoundError("decidingActorId", decisionInput.decidingActorId as string),
+        );
+      }
+
       const decisionId = randomUUID();
       const parsedDecision = authorityDecisionSchema.parse({
         id: decisionId,

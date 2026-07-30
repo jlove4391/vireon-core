@@ -58,6 +58,23 @@ export class DelegationReceiptWriteError extends Error {
   }
 }
 
+/**
+ * Raised when a caller-influenced internal reference (a WorkOrder id, an
+ * Actor id, ...) points at a row that doesn't exist at all, or exists but
+ * belongs to a different tenant. A plain FK only proves the row exists
+ * SOMEWHERE -- it does not prove tenant ownership, since FK constraint
+ * checks run independent of RLS (see src/db/assertTenantScopedReference.ts).
+ */
+export class StateReferenceNotFoundError extends Error {
+  constructor(
+    public readonly field: string,
+    public readonly id: string,
+  ) {
+    super(`Referenced ${field} ${id} not found for the given tenant`);
+    this.name = "StateReferenceNotFoundError";
+  }
+}
+
 export class TenantScopeViolationError extends Error {
   constructor(
     public readonly workOrderId: string,

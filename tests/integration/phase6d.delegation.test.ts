@@ -4,6 +4,7 @@ import { migrate } from "../../src/db/migrate.js";
 import { pool } from "../../src/db/pool.js";
 import { withTenantTransaction } from "../../src/db/withTenantTransaction.js";
 import { createWorkOrder } from "../../src/state/createWorkOrder.js";
+import { StateReferenceNotFoundError } from "../../src/state/errors.js";
 import { transitionWorkOrder } from "../../src/state/transitionWorkOrder.js";
 import { writeDelegationReceipt } from "../../src/state/writeDelegationReceipt.js";
 import { writeEloraReceipt } from "../../src/elora/writeEloraReceipt.js";
@@ -484,6 +485,107 @@ describe("Phase 6D: Delegation -- vertical and peer, reconciled -- acceptance", 
     expect(ordinaryReceipt).not.toBeNull();
     expect(ordinaryReceipt!.delegatedFrom).toBeNull();
     expect(ordinaryReceipt!.originalRequest?.inheritedFromParent).toBe(false);
+  });
+
+  it("createWorkOrder() rejects a cross-tenant ownerActorId with StateReferenceNotFoundError, and persists no partial WorkOrder", async () => {
+    const tenantB = await seedHierarchyContext();
+
+    await expect(
+      createWorkOrder({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        projectId: ctx.projectId,
+        threadId: ctx.threadId,
+        messageId: ctx.messageId,
+        actorId: ctx.sovereignId,
+        ownerActorId: tenantB.sovereignId,
+        taskType: "planning",
+        interpretedIntent: "Phase 6D cross-tenant ownerActorId attempt",
+      }),
+    ).rejects.toBeInstanceOf(StateReferenceNotFoundError);
+
+    const rows = await withTenantTransaction(ctx.tenantId, async (client) => {
+      const result = await client.query(
+        "SELECT count(*)::int AS n FROM work_orders WHERE tenant_id = $1 AND interpreted_intent = $2",
+        [ctx.tenantId, "Phase 6D cross-tenant ownerActorId attempt"],
+      );
+      return (result.rows[0] as { n: number }).n;
+    });
+    expect(rows).toBe(0);
+  });
+
+  it("writeDelegationReceipt() rejects a cross-tenant reference for each of its four ids, and persists no partial receipt", async () => {
+    const tenantB = await seedHierarchyContext();
+    const eloraId = ctx.personaIdsByName.get("Elora")!;
+    const nexoraId = ctx.personaIdsByName.get("Nexora")!;
+    const tenantBEloraId = tenantB.personaIdsByName.get("Elora")!;
+
+    const { workOrder: parent } = await createWorkOrder({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      projectId: ctx.projectId,
+      threadId: ctx.threadId,
+      messageId: ctx.messageId,
+      actorId: eloraId,
+      ownerActorId: eloraId,
+      taskType: "planning",
+      interpretedIntent: "Phase 6D cross-tenant delegation-receipt parent",
+    });
+    const { workOrder: child } = await createWorkOrder({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      projectId: ctx.projectId,
+      threadId: ctx.threadId,
+      messageId: ctx.messageId,
+      actorId: eloraId,
+      ownerActorId: nexoraId,
+      taskType: "implementation",
+      interpretedIntent: describeDelegation("Elora", "supervised", "cross-tenant guard check"),
+      parentWorkOrderId: parent.id,
+      delegationMode: "supervised",
+    });
+    const { workOrder: tenantBWorkOrder } = await createWorkOrder({
+      tenantId: tenantB.tenantId,
+      workspaceId: tenantB.workspaceId,
+      projectId: tenantB.projectId,
+      threadId: tenantB.threadId,
+      messageId: tenantB.messageId,
+      actorId: tenantBEloraId,
+      taskType: "planning",
+      interpretedIntent: "Phase 6D cross-tenant delegation-receipt tenant-B work order",
+    });
+
+    const baseInput = {
+      tenantId: ctx.tenantId,
+      parentWorkOrderId: parent.id,
+      childWorkOrderId: child.id,
+      parentActorId: eloraId,
+      childActorId: nexoraId,
+      delegationMode: "supervised" as const,
+      reason: "cross-tenant guard check",
+    };
+
+    await expect(
+      writeDelegationReceipt({ ...baseInput, parentWorkOrderId: tenantBWorkOrder.id }),
+    ).rejects.toBeInstanceOf(StateReferenceNotFoundError);
+    await expect(
+      writeDelegationReceipt({ ...baseInput, childWorkOrderId: tenantBWorkOrder.id }),
+    ).rejects.toBeInstanceOf(StateReferenceNotFoundError);
+    await expect(
+      writeDelegationReceipt({ ...baseInput, parentActorId: tenantBEloraId }),
+    ).rejects.toBeInstanceOf(StateReferenceNotFoundError);
+    await expect(
+      writeDelegationReceipt({ ...baseInput, childActorId: tenantBEloraId }),
+    ).rejects.toBeInstanceOf(StateReferenceNotFoundError);
+
+    const receiptCount = await withTenantTransaction(ctx.tenantId, async (client) => {
+      const result = await client.query(
+        "SELECT count(*)::int AS n FROM action_receipts WHERE tenant_id = $1 AND receipt_type = 'agent_delegated' AND work_order_id = $2",
+        [ctx.tenantId, child.id],
+      );
+      return (result.rows[0] as { n: number }).n;
+    });
+    expect(receiptCount).toBe(0);
   });
 
   // Item 6 (Phase 1-5, 6A, 6B, 6C regression) is verified by running the
