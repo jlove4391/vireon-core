@@ -939,4 +939,56 @@ describe("Phase 6K: Operator Directive Ledger acceptance", () => {
     const detail = await getDirectiveDetail(ctx.tenantId, directiveId);
     expect(detail.directive.state).toBe("OPEN");
   });
+
+  it("PR #22 review fix 5b: a genuinely-COMPLETED work order belonging to a different tenant cannot substantiate system_validated completion", async () => {
+    // addDirectiveProvenance() itself already refuses to store a
+    // cross-tenant work_order_id (fix 1, above). This test asks the
+    // narrower question: if a cross-tenant reference ever DID end up in
+    // operator_directive_provenance anyway -- a raw backfill script, a
+    // future code path that skips insertDirectiveProvenanceRow, a bug --
+    // does the evidence-check query itself, independently, still refuse
+    // to treat a real-but-foreign-tenant COMPLETED WorkOrder as
+    // substantiation? It must: the query's own
+    // `wo.tenant_id = p.tenant_id` join condition is a second,
+    // independent tenant check, not a reliance on the write-time guard.
+    const tenantB = await seedBaseContext();
+    const tenantBCompletedWorkOrderId = await seedCompletedWorkOrder(tenantB);
+
+    const created = await createOrMergeDirective({
+      tenantId: ctx.tenantId,
+      directiveType: "action" as const,
+      dedupeKey: `cross-tenant-evidence-check:${randomUUID()}`,
+      issuingActorId: ctx.actorId,
+      owningActorId: ctx.actorId,
+      title: "Cross-tenant evidence check",
+    });
+    const directiveId = created.directive!.id;
+    await transitionDirective({ tenantId: ctx.tenantId, directiveId, toState: "OPEN", actorId: ctx.actorId, reason: "accept" });
+
+    // Bypass insertDirectiveProvenanceRow deliberately -- raw insert
+    // simulates a provenance row that names tenant A but points at tenant
+    // B's real, genuinely-COMPLETED WorkOrder, to isolate the
+    // evidence-check query's own tenant-scoping from the write-time guard.
+    await withTenantTransaction(ctx.tenantId, (client) =>
+      client.query(
+        `INSERT INTO operator_directive_provenance (id, tenant_id, directive_id, work_order_id, created_at)
+         VALUES ($1, $2, $3, $4, now())`,
+        [randomUUID(), ctx.tenantId, directiveId, tenantBCompletedWorkOrderId],
+      ),
+    );
+
+    await expect(
+      transitionDirective({
+        tenantId: ctx.tenantId,
+        directiveId,
+        toState: "COMPLETED",
+        actorId: ctx.actorId,
+        reason: "claiming done via a foreign tenant's real completed work order",
+        completionMode: "system_validated",
+      }),
+    ).rejects.toBeInstanceOf(UnsubstantiatedCompletionError);
+
+    const detail = await getDirectiveDetail(ctx.tenantId, directiveId);
+    expect(detail.directive.state).toBe("OPEN");
+  });
 });
