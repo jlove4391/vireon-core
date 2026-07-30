@@ -18,6 +18,10 @@ export const DIRECTIVE_STATES = [
 export const directiveStateSchema = z.enum(DIRECTIVE_STATES);
 export type DirectiveState = z.infer<typeof directiveStateSchema>;
 
+export const DIRECTIVE_COMPLETION_MODES = ["operator_attested", "system_validated"] as const;
+export const directiveCompletionModeSchema = z.enum(DIRECTIVE_COMPLETION_MODES);
+export type DirectiveCompletionMode = z.infer<typeof directiveCompletionModeSchema>;
+
 export const operatorDirectiveSchema = z.object({
   id: uuidSchema,
   tenant_id: uuidSchema,

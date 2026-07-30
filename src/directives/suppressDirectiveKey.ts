@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import type { OperatorDirectiveSuppression } from "../schemas/operatorDirective.js";
+import { assertTenantScopedReference } from "./assertTenantScopedReference.js";
 import { DirectivePersistenceError, InvalidDirectiveInputError } from "./errors.js";
 import { rowToSuppression } from "./rowMappers.js";
 
@@ -33,7 +34,15 @@ export async function suppressDirectiveKey(input: SuppressDirectiveKeyInput): Pr
     throw new InvalidDirectiveInputError("suppressedUntil must be a valid datetime");
   }
 
+  // Trimmed once, used everywhere below: createOrMergeDirective.ts's
+  // suppression lookup always compares against dedupeKey.trim(), so a key
+  // stored here with incidental leading/trailing whitespace would silently
+  // never match and the suppression would block nothing.
+  const dedupeKey = input.dedupeKey.trim();
+
   return withTenantTransaction(input.tenantId, async (client) => {
+    await assertTenantScopedReference(client, "actors", input.suppressedByActorId, input.tenantId, "suppressedByActorId");
+
     const id = randomUUID();
     const now = new Date().toISOString();
     try {
@@ -42,7 +51,7 @@ export async function suppressDirectiveKey(input: SuppressDirectiveKeyInput): Pr
            (id, tenant_id, dedupe_key, reason, suppressed_by_actor_id, suppressed_until, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7)
          RETURNING *`,
-        [id, input.tenantId, input.dedupeKey, input.reason, input.suppressedByActorId, input.suppressedUntil, now],
+        [id, input.tenantId, dedupeKey, input.reason, input.suppressedByActorId, input.suppressedUntil, now],
       );
       return rowToSuppression(result.rows[0] as Record<string, unknown>);
     } catch (error) {

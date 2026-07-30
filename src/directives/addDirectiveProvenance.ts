@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import type { OperatorDirectiveProvenance } from "../schemas/operatorDirective.js";
+import { assertTenantScopedReference } from "./assertTenantScopedReference.js";
 import { DirectiveNotFoundError, DirectivePersistenceError, InvalidDirectiveInputError } from "./errors.js";
 import { rowToProvenance } from "./rowMappers.js";
 
@@ -31,6 +32,20 @@ export interface AddDirectiveProvenanceInput {
   source: DirectiveProvenanceSource;
   metadata?: Record<string, unknown>;
 }
+
+// Maps each internal source kind to its target table -- fixed, hardcoded
+// literals only, per assertTenantScopedReference.ts's own requirement.
+const SOURCE_KIND_TABLE: Record<Exclude<DirectiveProvenanceSource["kind"], "external">, string> = {
+  message: "messages",
+  work_order: "work_orders",
+  run: "runs",
+  authority_decision: "authority_decisions",
+  tool_invocation: "tool_invocations",
+  action_receipt: "action_receipts",
+  artifact: "artifacts",
+  memory_candidate: "memory_candidates",
+  memory_record: "memory_records",
+};
 
 function validateSource(source: DirectiveProvenanceSource): void {
   if (source.kind === "external") {
@@ -64,9 +79,25 @@ export async function insertDirectiveProvenanceRow(
     throw new DirectiveNotFoundError(input.directiveId);
   }
 
+  const source = input.source;
+
+  if (source.kind !== "external") {
+    const idByKind: Record<Exclude<DirectiveProvenanceSource["kind"], "external">, string> = {
+      message: source.kind === "message" ? source.messageId : "",
+      work_order: source.kind === "work_order" ? source.workOrderId : "",
+      run: source.kind === "run" ? source.runId : "",
+      authority_decision: source.kind === "authority_decision" ? source.authorityDecisionId : "",
+      tool_invocation: source.kind === "tool_invocation" ? source.toolInvocationId : "",
+      action_receipt: source.kind === "action_receipt" ? source.actionReceiptId : "",
+      artifact: source.kind === "artifact" ? source.artifactId : "",
+      memory_candidate: source.kind === "memory_candidate" ? source.memoryCandidateId : "",
+      memory_record: source.kind === "memory_record" ? source.memoryRecordId : "",
+    };
+    await assertTenantScopedReference(client, SOURCE_KIND_TABLE[source.kind], idByKind[source.kind], input.tenantId, source.kind);
+  }
+
   const id = randomUUID();
   const now = new Date().toISOString();
-  const source = input.source;
 
   const columns = {
     message_id: source.kind === "message" ? source.messageId : null,

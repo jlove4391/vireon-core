@@ -2,9 +2,24 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import type { OperatorDirectiveRevision } from "../schemas/operatorDirective.js";
+import { assertTenantScopedReference } from "./assertTenantScopedReference.js";
 import { computeDirectiveContentHash } from "./computeDirectiveContentHash.js";
 import { DirectiveNotFoundError, DirectivePersistenceError, InvalidDirectiveInputError } from "./errors.js";
 import { rowToRevision } from "./rowMappers.js";
+
+/** Mirrors due_at/window_start_at/window_end_at/expires_at from a revision onto the parent ledger row -- the one place these fields are denormalized for fast querying (title/body/priority are never denormalized; they're always read through the latest revision, per "rendered cards/prose are views"). Runs as part of the revision write itself so every caller of insertDirectiveRevisionRow -- not just createOrMergeDirective.ts's revise branch -- keeps the parent row's temporal fields in sync, atomically, on the same transaction. */
+async function mirrorTemporalFieldsOntoDirective(
+  client: PoolClient,
+  tenantId: string,
+  directiveId: string,
+  fields: { dueAt: string | null; windowStartAt: string | null; windowEndAt: string | null; expiresAt: string | null },
+): Promise<void> {
+  await client.query(
+    `UPDATE operator_directives SET due_at = $1, window_start_at = $2, window_end_at = $3, expires_at = $4, updated_at = $5
+     WHERE id = $6 AND tenant_id = $7`,
+    [fields.dueAt, fields.windowStartAt, fields.windowEndAt, fields.expiresAt, new Date().toISOString(), directiveId, tenantId],
+  );
+}
 
 export interface AppendDirectiveRevisionInput {
   tenantId: string;
@@ -47,6 +62,11 @@ export async function insertDirectiveRevisionRow(
   );
   if (directiveResult.rows.length === 0) {
     throw new DirectiveNotFoundError(input.directiveId);
+  }
+
+  await assertTenantScopedReference(client, "actors", input.createdByActorId, input.tenantId, "createdByActorId");
+  if (input.proposedOwnerActorId) {
+    await assertTenantScopedReference(client, "actors", input.proposedOwnerActorId, input.tenantId, "proposedOwnerActorId");
   }
 
   const maxResult = await client.query<{ max_rev: number }>(
@@ -98,6 +118,12 @@ export async function insertDirectiveRevisionRow(
         now,
       ],
     );
+    await mirrorTemporalFieldsOntoDirective(client, input.tenantId, input.directiveId, {
+      dueAt: input.dueAt ?? null,
+      windowStartAt: input.windowStartAt ?? null,
+      windowEndAt: input.windowEndAt ?? null,
+      expiresAt: input.expiresAt ?? null,
+    });
     return rowToRevision(result.rows[0] as Record<string, unknown>);
   } catch (error) {
     throw new DirectivePersistenceError(

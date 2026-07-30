@@ -25,6 +25,27 @@ export class DirectiveActorNotFoundError extends DirectiveError {
   }
 }
 
+/**
+ * Raised when an internal reference (a provenance column, or any other
+ * cross-table id this domain accepts from a caller) points at a row that
+ * either doesn't exist at all, or exists but belongs to a different
+ * tenant. A plain FK only proves the row exists SOMEWHERE -- it does not
+ * prove tenant ownership, since FK constraint checks run independent of
+ * RLS. This is the error every explicit tenant-scoped existence check in
+ * this domain raises, so a cross-tenant reference is rejected at
+ * write-time instead of silently persisting a row whose column value
+ * points outside its own tenant.
+ */
+export class DirectiveReferenceNotFoundError extends DirectiveError {
+  constructor(
+    public readonly field: string,
+    public readonly id: string,
+  ) {
+    super(`Referenced ${field} ${id} not found for the given tenant`);
+    this.name = "DirectiveReferenceNotFoundError";
+  }
+}
+
 export class DirectiveNotFoundError extends DirectiveError {
   constructor(public readonly directiveId: string) {
     super(`Directive ${directiveId} not found`);

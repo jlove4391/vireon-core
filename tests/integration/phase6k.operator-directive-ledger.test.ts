@@ -22,6 +22,7 @@ import { getDirectiveDetail } from "../../src/directives/getDirectiveDetail.js";
 import { getDirectiveHistory } from "../../src/directives/getDirectiveHistory.js";
 import {
   DirectiveNotFoundError,
+  DirectiveReferenceNotFoundError,
   InvalidDirectiveInputError,
   InvalidDirectiveTransitionError,
   TerminalDirectiveStateError,
@@ -728,5 +729,214 @@ describe("Phase 6K: Operator Directive Ledger acceptance", () => {
     });
     expect(redetected.outcome).toBe("reopened");
     expect(redetected.directive?.state).toBe("OPEN");
+  });
+
+  it("PR #22 review fix 1: a plain FK alone does not stop a cross-tenant internal reference -- write-time tenant checks reject it", async () => {
+    const tenantB = await seedBaseContext();
+
+    // A real WorkOrder that genuinely exists, just in the wrong tenant.
+    const { workOrder: tenantBWorkOrder } = await createWorkOrder({
+      tenantId: tenantB.tenantId,
+      workspaceId: tenantB.workspaceId,
+      projectId: tenantB.projectId,
+      threadId: tenantB.threadId,
+      messageId: tenantB.messageId,
+      actorId: tenantB.actorId,
+      taskType: "analysis",
+      interpretedIntent: "tenant B's own work order",
+    });
+
+    const created = await createOrMergeDirective({
+      tenantId: ctx.tenantId,
+      directiveType: "action" as const,
+      dedupeKey: `cross-tenant-provenance-check:${randomUUID()}`,
+      issuingActorId: ctx.actorId,
+      owningActorId: ctx.actorId,
+      title: "Cross-tenant provenance check",
+    });
+    const directiveId = created.directive!.id;
+
+    // Provenance pointing at tenant B's real WorkOrder from tenant A's
+    // transaction must be rejected -- the row exists, just not for this
+    // tenant, and a plain FK alone can't tell the difference.
+    await expect(
+      addDirectiveProvenance({
+        tenantId: ctx.tenantId,
+        directiveId,
+        source: { kind: "work_order", workOrderId: tenantBWorkOrder.id },
+      }),
+    ).rejects.toBeInstanceOf(DirectiveReferenceNotFoundError);
+    expect(await countProvenance(ctx.tenantId, directiveId)).toBe(0);
+
+    // Same gap, same fix, for an actor reference: transitionDirective's
+    // actorId, appendDirectiveRevision's createdByActorId/
+    // proposedOwnerActorId, and suppressDirectiveKey's suppressedByActorId
+    // must all reject a real-but-wrong-tenant actor id.
+    await expect(
+      transitionDirective({
+        tenantId: ctx.tenantId,
+        directiveId,
+        toState: "OPEN",
+        actorId: tenantB.actorId,
+        reason: "cross-tenant actor attempt",
+      }),
+    ).rejects.toBeInstanceOf(DirectiveReferenceNotFoundError);
+
+    await expect(
+      appendDirectiveRevision({
+        tenantId: ctx.tenantId,
+        directiveId,
+        title: "Should not be allowed",
+        createdByActorId: tenantB.actorId,
+      }),
+    ).rejects.toBeInstanceOf(DirectiveReferenceNotFoundError);
+
+    await expect(
+      appendDirectiveRevision({
+        tenantId: ctx.tenantId,
+        directiveId,
+        title: "Should not be allowed either",
+        createdByActorId: ctx.actorId,
+        proposedOwnerActorId: tenantB.actorId,
+      }),
+    ).rejects.toBeInstanceOf(DirectiveReferenceNotFoundError);
+
+    await expect(
+      suppressDirectiveKey({
+        tenantId: ctx.tenantId,
+        dedupeKey: `cross-tenant-suppression-check:${randomUUID()}`,
+        reason: "attempted with a foreign actor",
+        suppressedByActorId: tenantB.actorId,
+        suppressedUntil: new Date(Date.now() + 3_600_000).toISOString(),
+      }),
+    ).rejects.toBeInstanceOf(DirectiveReferenceNotFoundError);
+
+    // Confirm the same reference genuinely succeeds when it's actually
+    // this tenant's own row -- the check rejects wrong-tenant, not
+    // everything.
+    const ownWorkOrder = await seedCompletedWorkOrder(ctx);
+    const provenance = await addDirectiveProvenance({
+      tenantId: ctx.tenantId,
+      directiveId,
+      source: { kind: "work_order", workOrderId: ownWorkOrder },
+    });
+    expect(provenance.work_order_id).toBe(ownWorkOrder);
+  });
+
+  it("PR #22 review fix 2: two concurrent create attempts on the same dedupe key never raise a raw constraint error and never duplicate", async () => {
+    const dedupeKey = `concurrent-create-check:${randomUUID()}`;
+    const input = {
+      tenantId: ctx.tenantId,
+      directiveType: "blocker" as const,
+      dedupeKey,
+      issuingActorId: ctx.actorId,
+      owningActorId: ctx.actorId,
+      title: "Concurrent creation race",
+      body: "Identical content on both concurrent attempts.",
+    };
+
+    const [a, b] = await Promise.all([createOrMergeDirective(input), createOrMergeDirective(input)]);
+
+    // Neither call may throw a raw persistence error -- both must resolve
+    // to a coherent outcome (exactly one "created", the other merging into
+    // the same row rather than erroring or duplicating).
+    const outcomes = [a.outcome, b.outcome].sort();
+    expect(outcomes).toEqual(["carried", "created"]);
+    expect(a.directive?.id).toBe(b.directive?.id);
+
+    expect(await countDirectives(ctx.tenantId, dedupeKey)).toBe(1);
+  });
+
+  it("PR #22 review fix 3: due_at/window_start_at/window_end_at/expires_at stay in sync on the parent row even when appendDirectiveRevision is called directly", async () => {
+    const created = await createOrMergeDirective({
+      tenantId: ctx.tenantId,
+      directiveType: "action" as const,
+      dedupeKey: `temporal-sync-check:${randomUUID()}`,
+      issuingActorId: ctx.actorId,
+      owningActorId: ctx.actorId,
+      title: "Temporal sync check",
+    });
+    const directiveId = created.directive!.id;
+    expect(created.directive?.due_at).toBeNull();
+
+    const newDueAt = new Date(Date.now() + 86_400_000).toISOString();
+    const newWindowStart = new Date(Date.now() + 3_600_000).toISOString();
+    const newWindowEnd = new Date(Date.now() + 7_200_000).toISOString();
+    const newExpiresAt = new Date(Date.now() + 172_800_000).toISOString();
+
+    // insertDirectiveRevisionRow's own public entry point -- not routed
+    // through createOrMergeDirective at all -- must still mirror the new
+    // temporal fields onto the parent ledger row.
+    await appendDirectiveRevision({
+      tenantId: ctx.tenantId,
+      directiveId,
+      title: "Temporal sync check",
+      dueAt: newDueAt,
+      windowStartAt: newWindowStart,
+      windowEndAt: newWindowEnd,
+      expiresAt: newExpiresAt,
+      changeReason: "direct revision call, not via createOrMergeDirective",
+      createdByActorId: ctx.actorId,
+    });
+
+    const detail = await getDirectiveDetail(ctx.tenantId, directiveId);
+    expect(detail.directive.due_at).toBe(newDueAt);
+    expect(detail.directive.window_start_at).toBe(newWindowStart);
+    expect(detail.directive.window_end_at).toBe(newWindowEnd);
+    expect(detail.directive.expires_at).toBe(newExpiresAt);
+  });
+
+  it("PR #22 review fix 4: a suppression key with incidental whitespace still blocks the trimmed dedupe key it was meant for", async () => {
+    const bareKey = `suppression-whitespace-check:${randomUUID()}`;
+    await suppressDirectiveKey({
+      tenantId: ctx.tenantId,
+      dedupeKey: `  ${bareKey}  `,
+      reason: "submitted with incidental whitespace",
+      suppressedByActorId: ctx.actorId,
+      suppressedUntil: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    const result = await createOrMergeDirective({
+      tenantId: ctx.tenantId,
+      directiveType: "watch" as const,
+      dedupeKey: bareKey,
+      issuingActorId: ctx.actorId,
+      owningActorId: ctx.actorId,
+      title: "Should still be suppressed despite the whitespace",
+    });
+    expect(result.outcome).toBe("suppressed");
+    expect(await countDirectives(ctx.tenantId, bareKey)).toBe(0);
+  });
+
+  it("PR #22 review fix 5a: an arbitrary completionMode string is rejected, not silently written into the transition's audit metadata", async () => {
+    const created = await createOrMergeDirective({
+      tenantId: ctx.tenantId,
+      directiveType: "action" as const,
+      dedupeKey: `completion-mode-enum-check:${randomUUID()}`,
+      issuingActorId: ctx.actorId,
+      owningActorId: ctx.actorId,
+      title: "Completion mode enum check",
+    });
+    const directiveId = created.directive!.id;
+    await transitionDirective({ tenantId: ctx.tenantId, directiveId, toState: "OPEN", actorId: ctx.actorId, reason: "accept" });
+
+    await expect(
+      transitionDirective({
+        tenantId: ctx.tenantId,
+        directiveId,
+        toState: "COMPLETED",
+        actorId: ctx.actorId,
+        reason: "claiming done with a bogus mode",
+        // Not a valid DirectiveCompletionMode -- deliberately cast past the
+        // type system the way a less-trusted caller (an HTTP body, a tool
+        // result) would arrive at runtime with no static guarantee at all.
+        completionMode: "definitely_done_trust_me" as unknown as "operator_attested",
+      }),
+    ).rejects.toBeInstanceOf(InvalidDirectiveInputError);
+
+    // Must still be OPEN -- the bogus value must not have partially
+    // applied before being rejected.
+    const detail = await getDirectiveDetail(ctx.tenantId, directiveId);
+    expect(detail.directive.state).toBe("OPEN");
   });
 });
