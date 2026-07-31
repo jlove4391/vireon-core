@@ -176,6 +176,61 @@ describe("Phase 6C: Authority Resolution Engine acceptance", () => {
     expect(resolved.resolvedViaStandingRuleId).toBeNull();
   });
 
+  it(
+    "2b. a genuine cycle in reports_to_actor_id (application-level convention only, not DB-enforced -- verified directly against pg_constraint/pg_trigger, same finding as isOwnershipAssignmentAuthorized.ts's own doc comment for this column) terminates with the same genuine-unresolved-escalation shape as reaching the Sovereign, rather than hanging",
+    async () => {
+      // actors carries no CHECK constraint or trigger preventing a cycle --
+      // only the tenant-scoped composite FK and tier-vocabulary CHECKs.
+      // Constructed via two INSERTs plus a closing UPDATE, same technique
+      // as phase6j's test 5b (a single INSERT can't point at a
+      // not-yet-existing row).
+      const cycleActorA = randomUUID();
+      const cycleActorB = randomUUID();
+      await withTenantTransaction(ctx.tenantId, async (client) => {
+        await client.query(
+          `INSERT INTO actors (id, tenant_id, actor_type, actor_name, actor_role, hierarchy_tier, reports_to_actor_id)
+           VALUES ($1, $2, 'agent', $3, 'cycle-test', 'outer_circle', $4)`,
+          [cycleActorA, ctx.tenantId, `Cycle Test Actor A ${cycleActorA}`, ctx.sovereignId],
+        );
+        await client.query(
+          `INSERT INTO actors (id, tenant_id, actor_type, actor_name, actor_role, hierarchy_tier, reports_to_actor_id)
+           VALUES ($1, $2, 'agent', $3, 'cycle-test', 'outer_circle', $4)`,
+          [cycleActorB, ctx.tenantId, `Cycle Test Actor B ${cycleActorB}`, cycleActorA],
+        );
+        // Close the cycle: A now reports to B, and B already reports to A.
+        await client.query("UPDATE actors SET reports_to_actor_id = $1 WHERE id = $2 AND tenant_id = $3", [
+          cycleActorB,
+          cycleActorA,
+          ctx.tenantId,
+        ]);
+      });
+
+      // "calendar event", not "send an email" -- test 3 (below) leaves an
+      // active approve rule matching "send (an )?email" in this shared
+      // tenant; same avoidance already used by tests 5/6 in this file.
+      const input: ClassifyAuthorityInput = {
+        content: "Please schedule a calendar event for the cycle-guard-marker topic.",
+        taskType: "unknown",
+        resolvedProjectId: null,
+      };
+      const baseline = classifyAuthority(input);
+      expect(baseline.outcome).toBe("escalate");
+      expect(baseline.floorProtected).toBe(false);
+
+      const resolved = await resolveAuthorityWithHierarchy({
+        ...input,
+        tenantId: ctx.tenantId,
+        resolveStartingActorId: async () => cycleActorA,
+      });
+
+      expect(resolved.outcome).toBe(baseline.outcome);
+      expect(resolved.reason).toBe(baseline.reason);
+      expect(resolved.floorProtected).toBe(baseline.floorProtected);
+      expect(resolved.resolvedViaStandingRuleId).toBeNull();
+    },
+    5_000,
+  );
+
   it("3. ordinary escalate, matching rule at the immediate superior: resolves to act_and_report, resolved_via_standing_rule_id populated (in-process and persisted)", async () => {
     const ruleId = await insertStandingRule(ctx.tenantId, {
       scopeActorId: ctx.sovereignId,
