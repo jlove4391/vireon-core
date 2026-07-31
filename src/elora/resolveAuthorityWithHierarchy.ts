@@ -65,6 +65,18 @@ function unresolved(baseline: EloraAuthorityClassification): ResolvedAuthorityCl
  * first matching rule anywhere in the chain wins; reaching the Sovereign
  * (reports_to_actor_id IS NULL) with no match is a genuine, unresolved
  * live escalation, identical to pre-6C behavior.
+ *
+ * Cycle-safe: reports_to_actor_id acyclicity is an application-level
+ * convention only, upheld today solely by seedPersonaRoster.ts's own
+ * insertion order -- not by any CHECK constraint or trigger on `actors`
+ * (verified directly against pg_constraint/pg_trigger, same finding
+ * isOwnershipAssignmentAuthorized.ts's own doc comment already records for
+ * this same column and traversal direction). The `visited` set below is
+ * ported from that function's guard: a superior already seen this walk
+ * means a cycle was found, which is treated identically to reaching the
+ * Sovereign with no match -- a genuine, unresolved live escalation, not a
+ * distinct error or outcome shape, so callers never need to special-case
+ * why the walk stopped.
  */
 export async function resolveAuthorityWithHierarchy(
   input: ResolveAuthorityWithHierarchyInput,
@@ -83,6 +95,7 @@ export async function resolveAuthorityWithHierarchy(
 
   return withTenantTransaction(input.tenantId, async (client) => {
     let currentActorId = startingActorId;
+    const visited = new Set<string>([startingActorId]);
 
     for (;;) {
       const currentResult = await client.query<{ reports_to_actor_id: string | null }>(
@@ -90,10 +103,12 @@ export async function resolveAuthorityWithHierarchy(
         [currentActorId, input.tenantId],
       );
       const superior = currentResult.rows[0]?.reports_to_actor_id ?? null;
-      if (!superior) {
-        // Current actor has no superior -- either it is the Sovereign, or
-        // it's an actor with no resolvable chain. Either way, nothing left
-        // to check.
+      if (!superior || visited.has(superior)) {
+        // Either the current actor has no superior (Sovereign, or an actor
+        // with no resolvable chain), or `superior` was already visited
+        // this walk -- a cycle. Both mean nothing left to check, and both
+        // fall through to the same genuine-unresolved-escalation result
+        // below.
         break;
       }
 
@@ -119,6 +134,7 @@ export async function resolveAuthorityWithHierarchy(
         };
       }
 
+      visited.add(superior);
       currentActorId = superior;
     }
 
