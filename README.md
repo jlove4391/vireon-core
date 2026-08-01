@@ -89,6 +89,10 @@ pnpm test
 
 If these scripts do not exist yet, they should be introduced during the first implementation slice.
 
+### Working Across Multiple Worktrees
+
+If Postgres/Redis are already running on the standard ports from another worktree, don't start a second Docker stack -- run `pnpm db:worktree` to get your own isolated database on that same shared instance, then proceed with `pnpm db:migrate` as normal. This keeps one worktree's migrations from bleeding into another worktree's tests. Redis stays shared as-is; only Postgres needs this. On `main`, `pnpm db:worktree` is a no-op -- it always uses the shared default database there.
+
 ## Architectural Boundaries
 
 ```text

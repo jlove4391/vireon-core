@@ -28,6 +28,7 @@
     "test:phase6j": "vitest run tests/integration/phase6j.trigger-execution-engine.test.ts",
     "test:phase6k": "vitest run tests/integration/phase6k.operator-directive-ledger.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
     "diagnostics": "tsx tools/diagnostics/index.ts",
     "seed:dev-identity": "tsx scripts/seedDevIdentity.ts",
     "seed:persona-roster": "tsx scripts/seedPersonaRoster.ts",
