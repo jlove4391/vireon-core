@@ -4,6 +4,7 @@ import { migrate } from "../../src/db/migrate.js";
 import { pool } from "../../src/db/pool.js";
 import { withTenantTransaction } from "../../src/db/withTenantTransaction.js";
 import { createWorkOrder } from "../../src/state/createWorkOrder.js";
+import { describeDelegation } from "../../src/state/describeDelegation.js";
 import { StateReferenceNotFoundError } from "../../src/state/errors.js";
 import { transitionWorkOrder } from "../../src/state/transitionWorkOrder.js";
 import { writeDelegationReceipt } from "../../src/state/writeDelegationReceipt.js";
@@ -11,18 +12,6 @@ import { writeEloraReceipt } from "../../src/elora/writeEloraReceipt.js";
 import { getInspectableReceipt } from "../../tools/diagnostics/workOrder.js";
 import { reconcileSovereign, seedPersonaRoster } from "../../scripts/seedPersonaRoster.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
-
-/**
- * The convention for a delegated child WorkOrder's interpreted_intent
- * (established here since nothing live creates a real delegated child yet
- * -- whoever writes the first real caller, Nexora/Kaz/Jynx, should follow
- * this pattern rather than inheriting or leaving blank whatever the
- * parent's own intent was). See AUTHORITY_AND_DELEGATION.md's
- * delegated-child-identity note.
- */
-function describeDelegation(parentPersonaName: string, delegationMode: "supervised" | "peer", reason: string): string {
-  return `Delegated by ${parentPersonaName} (${delegationMode}): ${reason}`;
-}
 
 interface HierarchyContext extends SeededContext {
   sovereignId: string;
