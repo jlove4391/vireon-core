@@ -25,7 +25,12 @@ export interface ProseContext {
   sinceTimestamp: string;
 }
 
-const LANE_HEADINGS: Record<BriefingEntryLane, string> = {
+// Exported so any other backend code that needs to render/group by lane --
+// currently src/http/routes/briefings.ts (6M) -- reuses this one set of
+// labels/ordering instead of defining a second one. packages/contracts
+// must never import this (backend-internal module); the route resolves
+// these server-side and ships the resolved strings/order in the response.
+export const LANE_HEADINGS: Record<BriefingEntryLane, string> = {
   decision: "Decisions Required",
   focus: "Focus",
   action: "Actions",
@@ -35,7 +40,7 @@ const LANE_HEADINGS: Record<BriefingEntryLane, string> = {
   evidence: "Evidence Summary",
 };
 
-const LANE_ORDER: BriefingEntryLane[] = ["decision", "focus", "action", "blocker", "watch", "completed", "evidence"];
+export const LANE_ORDER: BriefingEntryLane[] = ["decision", "focus", "action", "blocker", "watch", "completed", "evidence"];
 
 function renderEntryLine(renderable: RenderableEntry): string {
   const carriedNote = renderable.entry.new_to_issue ? "" : " _(carried forward)_";
