@@ -29,6 +29,7 @@
     "test:phase6k": "vitest run tests/integration/phase6k.operator-directive-ledger.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
+    "setup:dev": "pnpm db:worktree && pnpm db:migrate && pnpm seed:dev-identity",
     "diagnostics": "tsx tools/diagnostics/index.ts",
     "seed:dev-identity": "tsx scripts/seedDevIdentity.ts",
     "seed:persona-roster": "tsx scripts/seedPersonaRoster.ts",

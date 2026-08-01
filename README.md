@@ -83,15 +83,18 @@ To maintain high velocity and enforce zero tolerance for avoidable technical deb
 
 ```bash
 pnpm install
+pnpm setup:dev
 pnpm typecheck
 pnpm test
 ```
+
+`pnpm setup:dev` isolates a per-worktree database if applicable, migrates it, and seeds a dev identity -- run it once after install and again any time you switch branches into a fresh worktree. Skipping it is the root cause of an otherwise-confusing HTTP-route test failure (dev identity never seeded), so it's a real prerequisite, not an optional convenience step.
 
 If these scripts do not exist yet, they should be introduced during the first implementation slice.
 
 ### Working Across Multiple Worktrees
 
-If Postgres/Redis are already running on the standard ports from another worktree, don't start a second Docker stack -- run `pnpm db:worktree` to get your own isolated database on that same shared instance, then proceed with `pnpm db:migrate` as normal. This keeps one worktree's migrations from bleeding into another worktree's tests. Redis stays shared as-is; only Postgres needs this. On `main`, `pnpm db:worktree` is a no-op -- it always uses the shared default database there.
+If Postgres/Redis are already running on the standard ports from another worktree, don't start a second Docker stack -- run `pnpm setup:dev` to get your own isolated database on that same shared instance, migrated and seeded with a dev identity, ready to use. This keeps one worktree's migrations from bleeding into another worktree's tests. Redis stays shared as-is; only Postgres needs this. On `main`, the database-isolation step is a no-op -- it always uses the shared default database there.
 
 ## Architectural Boundaries
 
