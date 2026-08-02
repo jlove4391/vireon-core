@@ -34,23 +34,35 @@ export interface NormalizedEloraIngress {
  * classification (classifyAuthority.ts) is the sole owner of those
  * branches in Phase 3. parseIntent.ts only ever emits work_order_candidate
  * or informational.
+ *
+ * Declared as const arrays (not just a type union) so PR 2's
+ * src/elora/llm/types.ts can build a real Zod enum
+ * (z.enum(ELORA_INTENT_TYPES)) reusing this exact vocabulary for its
+ * intent-interpretation operation, rather than redeclaring a parallel list
+ * that could drift from this one. EloraIntentType/EloraTaskType are
+ * unchanged in shape or value -- now derived from these arrays instead of
+ * a hand-written union, purely a refactor.
  */
-export type EloraIntentType =
-  | "work_order_candidate"
-  | "informational"
-  | "clarification_required"
-  | "setup_required"
-  | "capability_missing"
-  | "refusal_required";
+export const ELORA_INTENT_TYPES = [
+  "work_order_candidate",
+  "informational",
+  "clarification_required",
+  "setup_required",
+  "capability_missing",
+  "refusal_required",
+] as const;
+export type EloraIntentType = (typeof ELORA_INTENT_TYPES)[number];
 
-export type EloraTaskType =
-  | "planning"
-  | "documentation"
-  | "analysis"
-  | "memory"
-  | "implementation"
-  | "artifact_creation"
-  | "unknown";
+export const ELORA_TASK_TYPES = [
+  "planning",
+  "documentation",
+  "analysis",
+  "memory",
+  "implementation",
+  "artifact_creation",
+  "unknown",
+] as const;
+export type EloraTaskType = (typeof ELORA_TASK_TYPES)[number];
 
 export interface EloraStructuredIntent {
   intent_type: EloraIntentType;

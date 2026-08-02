@@ -10,6 +10,7 @@ import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { generateEloraResponse } from "../../src/elora/generateEloraResponse.js";
 import type { LlmProvider, LlmResponseContext } from "../../src/elora/llm/types.js";
 import { buildPrompt } from "../../src/elora/llm/anthropicProvider.js";
+import { FakeLlmProvider } from "../../src/elora/llm/fakeProvider.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,16 @@ vi.mock("../../src/elora/llm/anthropicProvider.js", async (importOriginal) => {
   return { ...actual, AnthropicProvider: MockAnthropicProvider };
 });
 
+// PR 2: LlmProvider gained five new required methods -- FakeLlmProvider is
+// the single, long-term seam for every LlmProvider test double (locked
+// decision), so these generateEloraResponse-only unit tests build on it
+// (only ever overriding generateResponse, the one method they actually
+// exercise) instead of hand-rolling six-method object literals that would
+// now fail to typecheck.
+function stubProvider(generateResponse: LlmProvider["generateResponse"]): LlmProvider {
+  return new FakeLlmProvider({ generateResponse });
+}
+
 function baseLlmContext(overrides: Partial<LlmResponseContext> = {}): LlmResponseContext {
   return {
     persona: ELORA_PERSONA,
@@ -60,9 +71,7 @@ function baseLlmContext(overrides: Partial<LlmResponseContext> = {}): LlmRespons
 
 describe("Phase 6F: generateEloraResponse -- fallback correctness (unit, no DB, no mocked module)", () => {
   it("3a. timeout -> deterministic fallback, not thrown", async () => {
-    const provider: LlmProvider = {
-      generateResponse: () => new Promise((_resolve, reject) => setTimeout(() => reject(new Error("timeout")), 5)),
-    };
+    const provider = stubProvider(() => new Promise((_resolve, reject) => setTimeout(() => reject(new Error("timeout")), 5)));
     const result = await generateEloraResponse({
       context: baseLlmContext(),
       deterministicFallback: "FALLBACK-TEXT",
@@ -72,11 +81,9 @@ describe("Phase 6F: generateEloraResponse -- fallback correctness (unit, no DB, 
   });
 
   it("3b. API error -> deterministic fallback, not thrown", async () => {
-    const provider: LlmProvider = {
-      generateResponse: async () => {
-        throw new Error("simulated API error");
-      },
-    };
+    const provider = stubProvider(async () => {
+      throw new Error("simulated API error");
+    });
     const result = await generateEloraResponse({
       context: baseLlmContext(),
       deterministicFallback: "FALLBACK-TEXT",
@@ -86,7 +93,7 @@ describe("Phase 6F: generateEloraResponse -- fallback correctness (unit, no DB, 
   });
 
   it("3c. empty response -> deterministic fallback", async () => {
-    const provider: LlmProvider = { generateResponse: async () => "" };
+    const provider = stubProvider(async () => "");
     const result = await generateEloraResponse({
       context: baseLlmContext(),
       deterministicFallback: "FALLBACK-TEXT",
@@ -96,19 +103,19 @@ describe("Phase 6F: generateEloraResponse -- fallback correctness (unit, no DB, 
   });
 
   it("3d. whitespace-only / absurdly long response -> deterministic fallback (sanity check fails)", async () => {
-    const whitespaceProvider: LlmProvider = { generateResponse: async () => "   \n\t  " };
+    const whitespaceProvider = stubProvider(async () => "   \n\t  ");
     expect(
       await generateEloraResponse({ context: baseLlmContext(), deterministicFallback: "FALLBACK-TEXT", provider: whitespaceProvider }),
     ).toBe("FALLBACK-TEXT");
 
-    const tooLongProvider: LlmProvider = { generateResponse: async () => "x".repeat(5000) };
+    const tooLongProvider = stubProvider(async () => "x".repeat(5000));
     expect(
       await generateEloraResponse({ context: baseLlmContext(), deterministicFallback: "FALLBACK-TEXT", provider: tooLongProvider }),
     ).toBe("FALLBACK-TEXT");
   });
 
   it("success: a well-formed response is used, not the fallback", async () => {
-    const provider: LlmProvider = { generateResponse: async () => "A real, sane in-character reply." };
+    const provider = stubProvider(async () => "A real, sane in-character reply.");
     const result = await generateEloraResponse({
       context: baseLlmContext(),
       deterministicFallback: "FALLBACK-TEXT",
