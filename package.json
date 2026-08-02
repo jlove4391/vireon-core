@@ -30,6 +30,7 @@
     "test:phase6m": "vitest run tests/integration/phase6m.operator-deck.test.ts",
     "test:pr0-observability": "vitest run tests/integration/pr0.observability.test.ts",
     "test:pr1-cognitive-run-contract": "vitest run tests/integration/pr1.cognitive-run-contract.test.ts",
+    "test:pr2-structured-model-operations": "vitest run tests/integration/pr2.structured-model-operations.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
     "setup:dev": "pnpm db:worktree && pnpm db:migrate && pnpm seed:dev-identity",
