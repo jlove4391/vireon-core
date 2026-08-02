@@ -10,3 +10,22 @@ export {
   type EloraMessageResponse,
   type SendEloraMessageRequest,
 } from "./eloraMessage.js";
+
+export {
+  briefingLaneSchema,
+  briefingIssueStatusSchema,
+  BriefingEntryDTOSchema,
+  BriefingIssueDTOSchema,
+  GetLatestBriefingQuerySchema,
+  LatestBriefingResponseSchema,
+  IssueBriefingRequestSchema,
+  IssueBriefingResponseSchema,
+  type BriefingLane,
+  type BriefingIssueStatus,
+  type BriefingEntryDTO,
+  type BriefingIssueDTO,
+  type GetLatestBriefingQuery,
+  type LatestBriefingResponse,
+  type IssueBriefingRequest,
+  type IssueBriefingResponse,
+} from "./briefingDeck.js";

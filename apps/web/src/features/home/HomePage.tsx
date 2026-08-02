@@ -24,6 +24,9 @@ export function HomePage() {
         <Link to="/elora" className="mt-8 inline-block">
           <Button>Enter the ELORA console</Button>
         </Link>
+        <Link to="/deck" className="mt-4 inline-block">
+          <Button variant="secondary">Open the Operator Deck</Button>
+        </Link>
       </Card>
     </main>
   );
