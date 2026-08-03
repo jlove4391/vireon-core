@@ -40,6 +40,7 @@ export async function runResponseSynthesis(
     operationKind: "response_synthesis",
     invocationKey: options.invocationKey,
     attemptNumber: options.attemptNumber,
+    contentPolicy: options.contentPolicy,
     provider: options.provider,
     input,
     outputSchema: ResponseSynthesisOutputSchema,

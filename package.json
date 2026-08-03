@@ -5,7 +5,7 @@
   "description": "Vireon CORE - state-centric relational operating runtime",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24 <25"
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
@@ -31,6 +31,7 @@
     "test:pr0-observability": "vitest run tests/integration/pr0.observability.test.ts",
     "test:pr1-cognitive-run-contract": "vitest run tests/integration/pr1.cognitive-run-contract.test.ts",
     "test:pr2-structured-model-operations": "vitest run tests/integration/pr2.structured-model-operations.test.ts",
+    "test:pr3-openai-provider": "vitest run tests/integration/pr3.openai-provider.test.ts tests/integration/pr3.openai-live-smoke.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
     "setup:dev": "pnpm db:worktree && pnpm db:migrate && pnpm seed:dev-identity",
@@ -53,6 +54,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "ioredis": "^5.4.1",
+    "openai": "^7.3.0",
     "pg": "^8.13.1",
     "zod": "^3.24.1"
   },
@@ -60,7 +62,7 @@
     "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@opentelemetry/sdk-trace-node": "^2.10.0",
     "@types/express": "^4.17.21",
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.0.0",
     "@types/pg": "^8.11.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

@@ -1,4 +1,17 @@
-export type ModelOperationErrorKind = "TIMEOUT" | "PROVIDER_FAILURE" | "INVALID_OUTPUT" | "PERSISTENCE_FAILURE";
+export type ModelOperationErrorKind =
+  | "TIMEOUT"
+  | "PROVIDER_FAILURE"
+  | "INVALID_OUTPUT"
+  | "PERSISTENCE_FAILURE"
+  // PR 3: the content-policy boundary denied this request before any
+  // provider call was ever made (see contentPolicy/). Never retryable --
+  // the same input will be denied identically every time.
+  | "SENSITIVE_CONTEXT_BLOCKED"
+  // PR 3: an OpenAI Responses API output content item had type "refusal".
+  | "MODEL_REFUSAL"
+  // PR 3: status "incomplete" (max_output_tokens or content_filter), or a
+  // structurally missing/empty parsed output.
+  | "INCOMPLETE_OUTPUT";
 
 /**
  * Base class for the four ModelOperationResult failure kinds.
@@ -80,5 +93,33 @@ export class ModelOperationPersistenceError extends ModelOperationError {
       cause,
     );
     this.name = "ModelOperationPersistenceError";
+  }
+}
+
+/**
+ * PR 3: the model explicitly refused the request (OpenAI Responses API
+ * output content item with type "refusal"). Not retryable by default --
+ * the same request is likely to be refused identically again, and this
+ * project's own doctrine never silently substitutes a guessed value for a
+ * declined one.
+ */
+export class ModelOperationRefusalError extends ModelOperationError {
+  constructor(operationKind: string, refusalText: string) {
+    super("MODEL_REFUSAL", false, `Model operation "${operationKind}" was refused by the model: ${refusalText}`);
+    this.name = "ModelOperationRefusalError";
+  }
+}
+
+/**
+ * PR 3: the provider's response was incomplete -- truncated by
+ * max_output_tokens, stopped by content filtering, or structurally missing
+ * a parsed output entirely. Retryable: a length-truncated or
+ * filter-interrupted response may succeed on a fresh attempt (e.g. with a
+ * shorter input), unlike a genuine schema mismatch.
+ */
+export class ModelOperationIncompleteOutputError extends ModelOperationError {
+  constructor(operationKind: string, reason: string) {
+    super("INCOMPLETE_OUTPUT", true, `Model operation "${operationKind}" produced incomplete output: ${reason}`);
+    this.name = "ModelOperationIncompleteOutputError";
   }
 }

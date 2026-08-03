@@ -63,6 +63,7 @@ export async function runReranking(
     operationKind: "reranking",
     invocationKey: options.invocationKey,
     attemptNumber: options.attemptNumber,
+    contentPolicy: options.contentPolicy,
     provider: options.provider,
     input: validatedInput,
     outputSchema: buildRerankingOutputSchema,

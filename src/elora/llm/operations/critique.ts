@@ -25,6 +25,7 @@ export async function runCritique(
     operationKind: "critique",
     invocationKey: options.invocationKey,
     attemptNumber: options.attemptNumber,
+    contentPolicy: options.contentPolicy,
     provider: options.provider,
     input: validatedInput,
     outputSchema: CritiqueOutputSchema,
