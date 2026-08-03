@@ -26,6 +26,7 @@ export async function runPlanning(
     operationKind: "planning",
     invocationKey: options.invocationKey,
     attemptNumber: options.attemptNumber,
+    contentPolicy: options.contentPolicy,
     provider: options.provider,
     input: validatedInput,
     outputSchema: PlanningOutputSchema,

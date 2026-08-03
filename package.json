@@ -31,6 +31,7 @@
     "test:pr0-observability": "vitest run tests/integration/pr0.observability.test.ts",
     "test:pr1-cognitive-run-contract": "vitest run tests/integration/pr1.cognitive-run-contract.test.ts",
     "test:pr2-structured-model-operations": "vitest run tests/integration/pr2.structured-model-operations.test.ts",
+    "test:pr3-openai-provider": "vitest run tests/integration/pr3.openai-provider.test.ts tests/integration/pr3.openai-live-smoke.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
     "setup:dev": "pnpm db:worktree && pnpm db:migrate && pnpm seed:dev-identity",
@@ -53,6 +54,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "ioredis": "^5.4.1",
+    "openai": "^7.3.0",
     "pg": "^8.13.1",
     "zod": "^3.24.1"
   },

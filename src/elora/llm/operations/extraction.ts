@@ -26,6 +26,7 @@ export async function runExtraction(
     operationKind: "extraction",
     invocationKey: options.invocationKey,
     attemptNumber: options.attemptNumber,
+    contentPolicy: options.contentPolicy,
     provider: options.provider,
     input: validatedInput,
     outputSchema: ExtractionOutputSchema,

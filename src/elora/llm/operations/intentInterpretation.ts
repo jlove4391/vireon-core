@@ -31,6 +31,7 @@ export async function runIntentInterpretation(
     operationKind: "intent_interpretation",
     invocationKey: options.invocationKey,
     attemptNumber: options.attemptNumber,
+    contentPolicy: options.contentPolicy,
     provider: options.provider,
     input: validatedInput,
     outputSchema: IntentInterpretationOutputSchema,

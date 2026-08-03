@@ -157,6 +157,16 @@ export interface ProviderUsage {
 export interface ProviderOperationCallResult {
   output: unknown;
   usage: ProviderUsage;
+  /**
+   * PR 3: provider-side correlation ids and the actually-resolved model,
+   * when the provider reports them (migrations/0015's provider_request_id/
+   * provider_response_id/resolved_model columns). Optional -- generateResponse's
+   * pre-existing Anthropic call path doesn't populate these; they stay NULL
+   * on those rows, not a gap unique to any one provider.
+   */
+  providerRequestId?: string;
+  providerResponseId?: string;
+  resolvedModel?: string;
 }
 
 /**
