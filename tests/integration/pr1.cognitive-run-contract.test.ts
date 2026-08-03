@@ -77,6 +77,21 @@ describe("PR 1: durable cognitive run contract acceptance", () => {
     expect(running.transition.from_state).toBe("PENDING");
     expect(running.transition.to_state).toBe("RUNNING");
 
+    // PR 4 §4.1: transitionCognitiveRun.ts now rejects COMPLETED unless a
+    // terminal model_invocations row substantiates it. This PR 1 fixture
+    // predates that gate, so a minimal terminal invocation row is inserted
+    // directly here to keep proving PR 1's own PENDING -> RUNNING -> COMPLETED
+    // lifecycle shape; the gate itself is proven separately in
+    // pr4.cognitive-coordinator.test.ts.
+    await withTenantTransaction(ctx.tenantId, async (client) => {
+      await client.query(
+        `INSERT INTO model_invocations
+           (tenant_id, cognitive_run_id, operation_kind, provider, model, status, invocation_key, completed_at, duration_ms)
+         VALUES ($1, $2, 'response_synthesis', 'fake', 'fake-model', 'SUCCEEDED', $3, now(), 5)`,
+        [ctx.tenantId, happyPathRunId, `pr1-completion-substantiation:${happyPathRunId}`],
+      );
+    });
+
     const completed = await transitionCognitiveRun({
       tenantId: ctx.tenantId,
       cognitiveRunId: happyPathRunId,

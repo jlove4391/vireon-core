@@ -86,13 +86,21 @@ export function buildPrompt(context: LlmResponseContext): { system: string; user
 
   const boundedUserMessage = boundToTokenBudget(context.userMessageContent, MAX_USER_MESSAGE_CHARS);
 
-  const userLines = [
-    `Original request: "${boundedUserMessage}"`,
-    `Task type: ${context.taskType}`,
-    `Decided outcome: ${context.authorityOutcome}`,
-    `Reason: ${context.reason}`,
-    `Final status: ${context.finalWorkOrderStatus}`,
-  ];
+  // PR 4: authorityOutcome/finalWorkOrderStatus are optional on
+  // LlmResponseContext (no WorkOrder or authority decision exists on the
+  // informational cognitive-run path) -- their lines are omitted entirely
+  // when absent, never replaced with a placeholder like "undefined" or
+  // "N/A", so the prompt never implies a decision was made where none was.
+  // When both are present (every existing WorkOrder-path caller), this
+  // produces the exact same lines in the exact same order as before.
+  const userLines = [`Original request: "${boundedUserMessage}"`, `Task type: ${context.taskType}`];
+  if (context.authorityOutcome !== undefined) {
+    userLines.push(`Decided outcome: ${context.authorityOutcome}`);
+  }
+  userLines.push(`Reason: ${context.reason}`);
+  if (context.finalWorkOrderStatus !== undefined) {
+    userLines.push(`Final status: ${context.finalWorkOrderStatus}`);
+  }
 
   if (context.toolResult) {
     userLines.push(
