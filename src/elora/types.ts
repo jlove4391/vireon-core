@@ -149,4 +149,20 @@ export interface EloraIngestionResult {
   /** Phase 5 §11.3: set only when core.artifact.write succeeded. */
   artifactId: string | null;
   memoryCandidateIds: string[];
+  /**
+   * PR 4: set only on the `informational` intent branch, which runs through
+   * runInformationalCognitiveRun.ts -- the real, durable CognitiveRun id for
+   * that run. Null on the work_order_candidate branch and on replayed/
+   * already-processed WorkOrder results (loadAlreadyProcessedResult): no
+   * cognitive run is ever created for those paths, and none should be
+   * inferred for pre-existing WorkOrder flows.
+   */
+  cognitiveRunId: string | null;
+  /**
+   * PR 4: the real model_invocations id substantiating the informational
+   * branch's CognitiveRun, when one exists (null only when the coordinator
+   * could not substantiate completion -- see runInformationalCognitiveRun.ts
+   * §4). Always null on the work_order_candidate branch.
+   */
+  modelInvocationId: string | null;
 }

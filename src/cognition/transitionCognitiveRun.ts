@@ -9,7 +9,7 @@ import {
   isTerminalCognitiveRunStatus,
   type CognitiveRunStatus,
 } from "./cognitiveRunState.js";
-import { CognitiveRunNotFoundError } from "./errors.js";
+import { CognitiveRunCompletionUnsubstantiatedError, CognitiveRunNotFoundError } from "./errors.js";
 
 export interface TransitionCognitiveRunInput {
   tenantId: string;
@@ -82,6 +82,26 @@ async function runTransition(
         const currentStatus = CognitiveRunStatusSchema.parse(cognitiveRunRow.status);
 
         assertValidCognitiveRunTransition(input.cognitiveRunId, currentStatus, input.nextStatus);
+
+        // PR 4 §4.1: completion substantiation gate. A transition into
+        // COMPLETED must be rejected unless a real model_invocations row
+        // with a terminal status already exists for this cognitive run --
+        // checked here, inside the same locked transaction, using the
+        // already-tenant-scoped client, not trusted from caller-supplied
+        // metadata or merely enforced by a coordinator that could forget to
+        // check. FAILED remains reachable with no invocation at all.
+        if (input.nextStatus === "COMPLETED") {
+          const evidence = await client.query(
+            `SELECT id FROM model_invocations
+             WHERE tenant_id = $1 AND cognitive_run_id = $2 AND status IN ('SUCCEEDED', 'FAILED', 'TIMED_OUT')
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [input.tenantId, input.cognitiveRunId],
+          );
+          if (evidence.rows.length === 0) {
+            throw new CognitiveRunCompletionUnsubstantiatedError(input.cognitiveRunId);
+          }
+        }
 
         // Both server-computed, never caller-controlled. started_at is only
         // reachable via the single PENDING -> RUNNING edge, so this can

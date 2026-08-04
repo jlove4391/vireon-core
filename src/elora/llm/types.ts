@@ -17,9 +17,17 @@ export interface LlmResponseContext {
   persona: PersonaConfig;
   userMessageContent: string;
   taskType: string;
-  authorityOutcome: AuthorityOutcome;
+  /**
+   * PR 4: optional -- absent on the informational cognitive-run path, which
+   * has no WorkOrder and therefore no authority decision to report. Never
+   * fabricate a value to satisfy this field; omit it instead. buildPrompt()
+   * (anthropicProvider.ts) omits the "Decided outcome" prompt line entirely
+   * when this is absent, rather than interpolating a placeholder.
+   */
+  authorityOutcome?: AuthorityOutcome;
   reason: string;
-  finalWorkOrderStatus: WorkOrderStatus;
+  /** PR 4: optional for the same reason as authorityOutcome above -- see that field's doc comment. */
+  finalWorkOrderStatus?: WorkOrderStatus;
   toolResult?: { toolName: string; artifactFilename?: string } | null;
   retrievedMemorySnippets: string[];
 }

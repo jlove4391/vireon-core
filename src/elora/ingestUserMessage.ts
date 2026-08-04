@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ELORA_PERSONA, type PersonaConfig } from "@vireon/persona-config";
+import { runInformationalCognitiveRun } from "../cognition/runInformationalCognitiveRun.js";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import { createWorkOrder, type CreateWorkOrderResult } from "../state/createWorkOrder.js";
 import { transitionWorkOrder, type TransitionWorkOrderInput } from "../state/transitionWorkOrder.js";
@@ -205,6 +206,10 @@ async function loadAlreadyProcessedResult(
           toolInvocationId: (invocationResult.rows[0]?.id as string | undefined) ?? null,
           artifactId: (artifactResult.rows[0]?.id as string | undefined) ?? null,
           memoryCandidateIds: candidatesResult.rows.map((row) => row.id as string),
+          // PR 4 §8: replay reconstruction is WorkOrder-only -- no cognitive
+          // run is ever created or inferred for this path.
+          cognitiveRunId: null,
+          modelInvocationId: null,
         };
       }),
   );
@@ -277,6 +282,34 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     const intent = parseIntent(persisted.content);
 
     if (intent.intent_type !== "work_order_candidate") {
+      // PR 4: the informational branch runs through a real, durable
+      // CognitiveRun (runInformationalCognitiveRun.ts) instead of returning
+      // the fixed clarification placeholder unconditionally. No WorkOrder,
+      // authority decision, receipt, or memory candidate is created on this
+      // path -- see that module's own doc comment for the full contract.
+      const informationalResult = await withSpan(
+        TRACER_NAME,
+        "elora.informational_cognitive_run",
+        { "vireon.tenant.id": context.tenantId, "vireon.thread.id": persisted.threadId, "vireon.message.id": persisted.messageId },
+        async (span) => {
+          const result = await runInformationalCognitiveRun({
+            tenantId: context.tenantId,
+            threadId: persisted.threadId,
+            messageId: persisted.messageId,
+            initiatedByActorId: context.actorId,
+            userMessageContent: persisted.content,
+            retrievedMemory,
+          });
+          setCorrelationAttributes(span, { cognitiveRunId: result.cognitiveRunId });
+          if (result.modelInvocationId) {
+            span.setAttribute("vireon.model_invocation.id", result.modelInvocationId);
+          }
+          span.setAttribute("vireon.cognitive_run.final_status", result.finalStatus);
+          return result;
+        },
+      );
+      setCorrelationAttributes(rootSpan, { cognitiveRunId: informationalResult.cognitiveRunId });
+
       return {
         tenantId: context.tenantId,
         threadId: persisted.threadId,
@@ -290,13 +323,20 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
         authorityOutcome: null,
         finalWorkOrderStatus: null,
         transitionPath: [],
-        responseType: "clarification_required",
-        responseText: "I need more information to proceed with this request.",
+        // §7: a substantiated completion (MODEL or DETERMINISTIC_FALLBACK
+        // source, both COMPLETED per §4.2) is a genuine direct answer; the
+        // absolute placeholder (FAILED) is the same clarification text this
+        // branch already returned before this PR, so it keeps the same
+        // responseType.
+        responseType: informationalResult.finalStatus === "COMPLETED" ? "direct_answer" : "clarification_required",
+        responseText: informationalResult.responseText,
         actionReceiptId: null,
         blockedReceiptId: null,
         toolInvocationId: null,
         artifactId: null,
         memoryCandidateIds: [],
+        cognitiveRunId: informationalResult.cognitiveRunId,
+        modelInvocationId: informationalResult.modelInvocationId,
       };
     }
 
@@ -598,6 +638,9 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       toolInvocationId,
       artifactId,
       memoryCandidateIds,
+      // PR 4 §8: no cognitive run is ever created on the work_order_candidate branch.
+      cognitiveRunId: null,
+      modelInvocationId: null,
     };
   });
 }
