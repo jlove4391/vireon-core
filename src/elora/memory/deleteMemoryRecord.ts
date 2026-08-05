@@ -1,0 +1,140 @@
+import { randomUUID } from "node:crypto";
+import { withTenantTransaction } from "../../db/withTenantTransaction.js";
+import { memoryRecordSchema, type MemoryRecord } from "../../schemas/memoryRecord.js";
+import { memoryRecordVersionSchema, type MemoryRecordVersion } from "../../schemas/memoryRecordVersion.js";
+import { MemoryRecordAlreadyDeletedError, MemoryRecordNotFoundError } from "./errors.js";
+
+export interface DeleteMemoryRecordInput {
+  tenantId: string;
+  memoryRecordId: string;
+  actorId: string;
+  reason: string;
+}
+
+export interface DeleteMemoryRecordResult {
+  memoryRecord: MemoryRecord;
+  deletionVersion: MemoryRecordVersion;
+}
+
+/**
+ * The tombstone marker written to both memory_records.content and the final
+ * version row's content on deletion. Fixed and content-free by design: the
+ * whole point of a real deletion (as opposed to supersession, which is a
+ * correction that deliberately keeps old content queryable as history) is
+ * that the sensitive content is genuinely gone, not merely flagged. This
+ * constant must never vary by what was actually deleted.
+ */
+export const DELETION_TOMBSTONE_CONTENT = "[content removed by deletion]";
+
+function toIso(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+/**
+ * Deletion is a distinct operation from supersession, not a "soft delete"
+ * variant of it. Locked behavior (PR 5): memory_records.content is genuinely
+ * cleared to DELETION_TOMBSTONE_CONTENT, deleted_at is set to a real
+ * timestamp, and the fact that a deletion happened is itself durably
+ * recorded as a final memory_record_versions row (is_deletion_marker =
+ * true) whose own content is also the tombstone -- never the original
+ * sensitive content.
+ *
+ * Critically, this also scrubs `content` on every *pre-existing* version
+ * row for this record, not only the new final marker row. The decision
+ * doc is explicit that a "soft delete that leaves the original sensitive
+ * content sitting in a queryable historical version wouldn't actually
+ * satisfy [deletion's] reason" -- supersession deliberately keeps prior
+ * content queryable as history; deletion deliberately does not, since that
+ * would leave the "deleted" content trivially recoverable from
+ * memory_record_versions. Structural fields on prior versions
+ * (version_number, created_at, and the caller-supplied free-text
+ * change_reason) are left untouched -- only `content` is cleared -- so the
+ * shape of the correction history (how many times it was corrected, when)
+ * stays honestly auditable without the actual content surviving anywhere.
+ * Known limitation: a caller-supplied `change_reason` on an earlier
+ * supersession could itself incidentally quote sensitive content; this PR
+ * does not scrub that free-text field, only `content`.
+ *
+ * A memory record can only be deleted once -- MemoryRecordAlreadyDeletedError
+ * on a second attempt, the same terminal-state posture
+ * supersedeMemoryRecord.ts uses for the identical precondition.
+ */
+export async function deleteMemoryRecord(input: DeleteMemoryRecordInput): Promise<DeleteMemoryRecordResult> {
+  return withTenantTransaction(input.tenantId, async (client) => {
+    const existing = await client.query(
+      "SELECT * FROM memory_records WHERE id = $1 AND tenant_id = $2 FOR UPDATE",
+      [input.memoryRecordId, input.tenantId],
+    );
+    const recordRow = existing.rows[0] as Record<string, unknown> | undefined;
+    if (!recordRow) {
+      throw new MemoryRecordNotFoundError(input.memoryRecordId);
+    }
+    if (recordRow.deleted_at) {
+      throw new MemoryRecordAlreadyDeletedError(input.memoryRecordId);
+    }
+
+    const maxVersionResult = await client.query<{ max_version: number }>(
+      "SELECT COALESCE(MAX(version_number), 0) AS max_version FROM memory_record_versions WHERE tenant_id = $1 AND memory_record_id = $2",
+      [input.tenantId, input.memoryRecordId],
+    );
+    const nextVersionNumber = Number(maxVersionResult.rows[0]!.max_version) + 1;
+
+    // Scrub content on every pre-existing version row -- see this
+    // function's own doc comment for why this is required for a real
+    // deletion, not merely a nice-to-have. Structural fields
+    // (version_number, change_reason, created_at) are left untouched.
+    await client.query(
+      "UPDATE memory_record_versions SET content = $1 WHERE tenant_id = $2 AND memory_record_id = $3",
+      [DELETION_TOMBSTONE_CONTENT, input.tenantId, input.memoryRecordId],
+    );
+
+    const now = new Date().toISOString();
+    const versionId = randomUUID();
+
+    const parsedVersion = memoryRecordVersionSchema.parse({
+      id: versionId,
+      tenant_id: input.tenantId,
+      memory_record_id: input.memoryRecordId,
+      version_number: nextVersionNumber,
+      content: DELETION_TOMBSTONE_CONTENT,
+      change_reason: input.reason,
+      is_deletion_marker: true,
+      created_at: now,
+    });
+
+    await client.query(
+      `INSERT INTO memory_record_versions (id, tenant_id, memory_record_id, version_number, content, change_reason, is_deletion_marker, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        parsedVersion.id,
+        parsedVersion.tenant_id,
+        parsedVersion.memory_record_id,
+        parsedVersion.version_number,
+        parsedVersion.content,
+        parsedVersion.change_reason,
+        parsedVersion.is_deletion_marker,
+        parsedVersion.created_at,
+      ],
+    );
+
+    const updated = await client.query(
+      `UPDATE memory_records SET content = $1, deleted_at = $2, current_version_id = $3 WHERE id = $4 AND tenant_id = $5 RETURNING *`,
+      [DELETION_TOMBSTONE_CONTENT, now, versionId, input.memoryRecordId, input.tenantId],
+    );
+    const updatedRow = updated.rows[0] as Record<string, unknown>;
+
+    const parsedRecord = memoryRecordSchema.parse({
+      id: updatedRow.id,
+      tenant_id: updatedRow.tenant_id,
+      source_candidate_id: updatedRow.source_candidate_id,
+      content: updatedRow.content,
+      record_type: updatedRow.record_type,
+      scope: updatedRow.scope,
+      current_version_id: updatedRow.current_version_id,
+      deleted_at: toIso(updatedRow.deleted_at as string | Date),
+      created_at: toIso(updatedRow.created_at as string | Date),
+    });
+
+    return { memoryRecord: parsedRecord, deletionVersion: parsedVersion };
+  });
+}

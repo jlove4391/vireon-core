@@ -33,6 +33,7 @@
     "test:pr2-structured-model-operations": "vitest run tests/integration/pr2.structured-model-operations.test.ts",
     "test:pr3-openai-provider": "vitest run tests/integration/pr3.openai-provider.test.ts tests/integration/pr3.openai-live-smoke.test.ts",
     "test:pr4-cognitive-coordinator": "vitest run tests/integration/pr4.cognitive-coordinator.test.ts",
+    "test:pr5-memory-versioning": "vitest run tests/integration/pr5.memory-versioning.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
     "setup:dev": "pnpm db:worktree && pnpm db:migrate && pnpm seed:dev-identity",
