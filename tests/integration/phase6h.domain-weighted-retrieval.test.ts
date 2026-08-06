@@ -3,23 +3,15 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ELORA_PERSONA } from "@vireon/persona-config";
 import { migrate } from "../../src/db/migrate.js";
 import { pool } from "../../src/db/pool.js";
-import { withTenantTransaction } from "../../src/db/withTenantTransaction.js";
 import { retrieveRelevantMemory } from "../../src/elora/retrieveRelevantMemory.js";
 import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { toEloraMessageResponse } from "../../src/http/contracts/eloraMessageResponse.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
+import { seedMemoryRecord as seedMemoryRecordWithVersion } from "../shared/seedMemoryRecord.js";
 
 async function seedMemoryRecord(tenantId: string, content: string, scope: string | null): Promise<string> {
-  return withTenantTransaction(tenantId, async (client) => {
-    const id = randomUUID();
-    await client.query(`INSERT INTO memory_records (id, tenant_id, content, scope) VALUES ($1, $2, $3, $4)`, [
-      id,
-      tenantId,
-      content,
-      scope,
-    ]);
-    return id;
-  });
+  const record = await seedMemoryRecordWithVersion({ tenantId, content, scope });
+  return record.id;
 }
 
 describe("Phase 6H: Domain-Weighted Retrieval & Exposure acceptance (DB-backed)", () => {

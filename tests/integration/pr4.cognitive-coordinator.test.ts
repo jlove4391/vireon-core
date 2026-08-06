@@ -12,6 +12,7 @@ import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { buildPrompt } from "../../src/elora/llm/anthropicProvider.js";
 import type { LlmResponseContext } from "../../src/elora/llm/types.js";
 import { seedBaseContext } from "../../test-utils/dbTestContext.js";
+import { seedMemoryRecord } from "../shared/seedMemoryRecord.js";
 
 // Hoisted mutable mock state -- vi.mock factories are hoisted above imports,
 // so state they close over must be created via vi.hoisted(). Mocking the
@@ -80,17 +81,6 @@ vi.mock("../../src/elora/llm/openaiProvider.js", async (importOriginal) => {
 });
 
 const ABSOLUTE_FALLBACK_TEXT = "I need more information to proceed with this request.";
-
-async function seedMemoryRecord(tenantId: string, content: string): Promise<string> {
-  return withTenantTransaction(tenantId, async (client) => {
-    const id = randomUUID();
-    await client.query(
-      "INSERT INTO memory_records (id, tenant_id, content, record_type, scope) VALUES ($1, $2, $3, $4, $5)",
-      [id, tenantId, content, "note", "project"],
-    );
-    return id;
-  });
-}
 
 async function fetchCognitiveRun(tenantId: string, cognitiveRunId: string): Promise<Record<string, unknown>> {
   return withTenantTransaction(tenantId, async (client) => {
@@ -178,7 +168,7 @@ describe("PR 4: cognitive coordinator acceptance", () => {
   it("13.1: a successful informational request produces a durable, substantiated COMPLETED cognitive run (also proves the §7 direct_answer mapping)", async () => {
     const ctx = await seedBaseContext();
     const memoryContent = "zephyr project notes: " + "the migration timeline shifted twice. ".repeat(8);
-    await seedMemoryRecord(ctx.tenantId, memoryContent);
+    await seedMemoryRecord({ tenantId: ctx.tenantId, content: memoryContent, recordType: "note", scope: "project" });
 
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
