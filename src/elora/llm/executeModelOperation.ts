@@ -13,11 +13,12 @@ import {
   ModelOperationTimeoutError,
   type ModelOperationErrorKind,
 } from "./errors.js";
-import type { LlmProvider, ProviderOperationCallResult, ProviderUsage } from "./types.js";
+import type { LlmProvider, ModelOperationProvider, ProviderOperationCallResult, ProviderUsage } from "./types.js";
 
-// PR 2: the six operations this table's CHECK constraint (migrations/0014)
-// enumerates -- closed, not open-vocabulary, since the full set is fully
-// known right now.
+// PR 6: widened from six to seven -- embedding is the concrete seventh
+// operation migrations/0014's own doctrine anticipated. Still closed, not
+// open-vocabulary: the full set is fully known right now, matching
+// migrations/0017's widened CHECK constraint exactly.
 export const MODEL_OPERATION_KINDS = [
   "response_synthesis",
   "intent_interpretation",
@@ -25,6 +26,7 @@ export const MODEL_OPERATION_KINDS = [
   "critique",
   "extraction",
   "reranking",
+  "embedding",
 ] as const;
 export type ModelOperationKind = (typeof MODEL_OPERATION_KINDS)[number];
 
@@ -95,7 +97,15 @@ export interface ContentPolicyConfig {
   restrictedAllowed?: boolean;
 }
 
-export interface ExecuteModelOperationConfig<TInput, TOutput> {
+/**
+ * PR 6 §5.2: generic over the provider shape, defaulting to LlmProvider so
+ * every existing caller (the six operations/*.ts files) needs zero changes.
+ * runEmbedding() (operations/embedding.ts) is the first caller to supply
+ * TProvider = EmbeddingProvider explicitly -- an embedding provider doesn't
+ * implement generateResponse/interpretIntent/plan/critique/extract/rerank,
+ * and this executor was never allowed to require that it fake them.
+ */
+export interface ExecuteModelOperationConfig<TInput, TOutput, TProvider extends ModelOperationProvider = LlmProvider> {
   tenantId: string;
   /** PR 1's cognitive_runs id, when this call happens inside a real cognitive run. No live caller supplies this yet. */
   cognitiveRunId?: string | null;
@@ -106,11 +116,11 @@ export interface ExecuteModelOperationConfig<TInput, TOutput> {
   /** Identifies the logical request; paired with attemptNumber to give each physical retry its own durable row (migrations/0014's own doctrine). */
   invocationKey: string;
   attemptNumber?: number;
-  provider: LlmProvider;
+  provider: TProvider;
   input: TInput;
   /** May be a function of the input -- e.g. reranking.ts builds a schema that rejects unknown/duplicate candidate ids specific to the candidates actually supplied for this call. */
   outputSchema: ZodSchema<TOutput> | ((input: TInput) => ZodSchema<TOutput>);
-  callProvider: (provider: LlmProvider, input: TInput, timeoutMs: number) => Promise<ProviderOperationCallResult>;
+  callProvider: (provider: TProvider, input: TInput, timeoutMs: number) => Promise<ProviderOperationCallResult>;
   timeoutMs: number;
   /** PR 3: content-policy config. Omit entirely for INTERNAL/allowed/no-redaction behavior -- zero change for existing callers. */
   contentPolicy?: ContentPolicyConfig;
@@ -149,11 +159,22 @@ function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, operationKin
   });
 }
 
+/**
+ * Narrowed to ModelOperationProvider (not the generic TProvider) --
+ * insertStartedRow only ever reads providerId/modelId off `config.provider`,
+ * so it doesn't need to be generic itself. Keeping it non-generic avoids
+ * threading TProvider through a helper that has no use for the wider shape.
+ */
+interface InsertStartedRowConfig {
+  tenantId: string;
+  cognitiveRunId?: string | null;
+  operationKind: ModelOperationKind;
+  invocationKey: string;
+  provider: ModelOperationProvider;
+}
+
 async function insertStartedRow(
-  config: Pick<
-    ExecuteModelOperationConfig<unknown, unknown>,
-    "tenantId" | "cognitiveRunId" | "operationKind" | "invocationKey" | "provider"
-  >,
+  config: InsertStartedRowConfig,
   meta: {
     operationVersion: number;
     inputSchemaVersion: number;
@@ -257,8 +278,8 @@ async function markTerminal(tenantId: string, invocationId: string, fields: Term
  * only operation-specific config -- none of them re-implement this
  * lifecycle themselves.
  */
-export async function executeModelOperation<TInput, TOutput>(
-  config: ExecuteModelOperationConfig<TInput, TOutput>,
+export async function executeModelOperation<TInput, TOutput, TProvider extends ModelOperationProvider = LlmProvider>(
+  config: ExecuteModelOperationConfig<TInput, TOutput, TProvider>,
 ): Promise<ModelOperationResult<TOutput>> {
   const operationVersion = config.operationVersion ?? 1;
   const inputSchemaVersion = config.inputSchemaVersion ?? 1;

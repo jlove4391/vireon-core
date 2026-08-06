@@ -10,12 +10,16 @@ import {
   type WorkOrderStatus,
 } from "../state/workOrderState.js";
 import type { AuthorityOutcome } from "../shared/runtimeTypes.js";
+import { buildIdempotencyKey } from "../shared/ids.js";
 import { isToolRegistered } from "../tools/registry.js";
 import { registerCoreTools } from "../tools/index.js";
 import { setCorrelationAttributes, withSpan } from "../telemetry/correlation.js";
 import { dispatchTool } from "./dispatchTool.js";
 import { EloraPersonaActorNotFoundError } from "./errors.js";
 import { generateEloraResponse } from "./generateEloraResponse.js";
+import { createConfiguredEmbeddingProvider } from "./llm/embeddingProvider.js";
+import { retrieveHybridMemory } from "./memory/retrieveHybridMemory.js";
+import { readMemoryRetrievalStrategyFromEnv } from "./memory/retrievalStrategy.js";
 import { normalizeIngress } from "./normalizeIngress.js";
 import { persistMessage } from "./persistMessage.js";
 import { parseIntent } from "./parseIntent.js";
@@ -260,22 +264,65 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
     );
     setCorrelationAttributes(rootSpan, { threadId: persisted.threadId, messageId: persisted.messageId });
 
+    // PR 6 §22: the single retrieval selection point. Deterministic
+    // (retrieveRelevantMemory.ts) remains the exact pre-PR-6 call, byte for
+    // byte, when the strategy is unset or explicitly "deterministic" -- no
+    // embedding provider is constructed and OPENAI_API_KEY is never
+    // inspected on that branch. "hybrid" constructs the configured OpenAI
+    // embedding provider (throws a typed configuration error if
+    // OPENAI_API_KEY is absent -- a config failure, not a runtime
+    // degradation) and calls retrieveHybridMemory.ts instead.
     const retrievedMemory = await withSpan(
       TRACER_NAME,
       "elora.retrieve_memory",
       { "vireon.tenant.id": context.tenantId, "vireon.thread.id": persisted.threadId },
-      async (span) => {
-        const result = await retrieveRelevantMemory({
-          tenantId: context.tenantId,
-          queryText: persisted.content,
-          // 6H §5.2: Elora's domain is null (executive-tier, full unweighted
-          // pool) -- retrieveRelevantMemory() turns that into no ranking clause
-          // at all, so this call is unaffected by 6H's addition, structurally,
-          // not by a special case here.
-          requestingPersonaDomain: ELORA_PERSONA.domain,
-        });
-        span.setAttribute("vireon.memory_candidate.retrieved_count", result.length);
-        return result;
+      async (span): Promise<RetrievedMemoryRecord[]> => {
+        const strategy = readMemoryRetrievalStrategyFromEnv();
+        span.setAttribute("vireon.memory_retrieval.strategy", strategy);
+
+        if (strategy === "deterministic") {
+          const result = await retrieveRelevantMemory({
+            tenantId: context.tenantId,
+            queryText: persisted.content,
+            // 6H §5.2: Elora's domain is null (executive-tier, full unweighted
+            // pool) -- retrieveRelevantMemory() turns that into no ranking clause
+            // at all, so this call is unaffected by 6H's addition, structurally,
+            // not by a special case here.
+            requestingPersonaDomain: ELORA_PERSONA.domain,
+          });
+          span.setAttribute("vireon.memory_candidate.retrieved_count", result.length);
+          return result;
+        }
+
+        const embeddingProvider = createConfiguredEmbeddingProvider();
+        const invocationKey = buildIdempotencyKey([
+          context.tenantId,
+          persisted.messageId,
+          "embedding",
+          "query",
+          embeddingProvider.providerId,
+          embeddingProvider.modelId,
+          String(embeddingProvider.dimensions),
+        ]);
+
+        const hybridResult = await retrieveHybridMemory(
+          {
+            tenantId: context.tenantId,
+            queryText: persisted.content,
+            invocationKey,
+            requestingPersonaDomain: ELORA_PERSONA.domain,
+          },
+          { embeddingProvider },
+        );
+
+        span.setAttribute("vireon.memory_candidate.retrieved_count", hybridResult.records.length);
+        span.setAttribute("vireon.memory_retrieval.fts_candidate_count", hybridResult.ftsCandidateCount);
+        span.setAttribute("vireon.memory_retrieval.vector_candidate_count", hybridResult.vectorCandidateCount);
+        span.setAttribute("vireon.memory_retrieval.vector_status", hybridResult.vectorStatus);
+        if (hybridResult.queryModelInvocationId) {
+          span.setAttribute("vireon.model_invocation.id", hybridResult.queryModelInvocationId);
+        }
+        return hybridResult.records;
       },
     );
 

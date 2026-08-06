@@ -37,11 +37,20 @@ function tokenize(text: string): string[] {
 
 /**
  * Deterministic text-match retrieval against memory_records -- no
- * embeddings, no pgvector query, even though the embedding column exists
- * (Phase 3 §6/§13). Scoping note: memory_records (migration 0001) carries
+ * embeddings, no pgvector query. PR 6 introduced a real embedding path
+ * (retrieveHybridMemory.ts, gated behind MEMORY_RETRIEVAL_STRATEGY=hybrid);
+ * this function remains the independently-callable, always-available
+ * default and does not call an embedding provider or require
+ * OPENAI_API_KEY. Scoping note: memory_records (migration 0001) carries
  * only tenant_id, not workspace_id/project_id, so hard scoping is
  * tenant-only; there is no schema-level way to narrow further without a
  * migration, which is out of scope here.
+ *
+ * PR 6 §13: excludes deleted records (deleted_at IS NULL) -- a correction
+ * to a pre-existing gap, not new scoping. Before PR 5 introduced real
+ * deletion, no memory_records row could ever be deleted, so this filter
+ * was never needed; the gap only became reachable once deleteMemoryRecord.ts
+ * existed and this function was never updated alongside it until now.
  *
  * 6H: requestingPersonaDomain adds ranking-only domain weighting on top of
  * this same deterministic, embedding-free query -- still no vector search,
@@ -82,7 +91,7 @@ export async function retrieveRelevantMemory(input: RetrieveRelevantMemoryInput)
 
     const result = await client.query(
       `SELECT id, content, record_type, scope FROM memory_records
-       WHERE tenant_id = $1 AND (${conditions})
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND (${conditions})
        ORDER BY ${orderBy}
        LIMIT $${limitParamIndex}`,
       params,
