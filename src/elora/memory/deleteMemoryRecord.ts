@@ -55,11 +55,26 @@ function toIso(value: string | Date): string {
  * supersession could itself incidentally quote sensitive content; this PR
  * does not scrub that free-text field, only `content`.
  *
+ * PR 6 §12: for the exact same reason, every derived embedding for every
+ * version of this record is deleted outright -- not merely marked
+ * SUPERSEDED -- before content scrubbing. An embedding is a lossy but real
+ * encoding of the content it was derived from; leaving it in place after
+ * deletion would be the identical "recoverable from a queryable row"
+ * failure the version-content scrub exists to close, just in vector form
+ * instead of text form. The atomic sequence is: lock record -> remove
+ * derived embeddings -> scrub historical version content -> insert
+ * deletion marker -> tombstone parent -> commit. A rollback at any point
+ * restores all of it (embeddings, content, parent state) -- see this
+ * function's test coverage for the forced-failure proof.
+ *
  * A memory record can only be deleted once -- MemoryRecordAlreadyDeletedError
  * on a second attempt, the same terminal-state posture
  * supersedeMemoryRecord.ts uses for the identical precondition.
  */
-export async function deleteMemoryRecord(input: DeleteMemoryRecordInput): Promise<DeleteMemoryRecordResult> {
+async function runDeleteMemoryRecord(
+  input: DeleteMemoryRecordInput,
+  options: { injectFailureAfterEmbeddingDeletion: boolean },
+): Promise<DeleteMemoryRecordResult> {
   return withTenantTransaction(input.tenantId, async (client) => {
     const existing = await client.query(
       "SELECT * FROM memory_records WHERE id = $1 AND tenant_id = $2 FOR UPDATE",
@@ -71,6 +86,26 @@ export async function deleteMemoryRecord(input: DeleteMemoryRecordInput): Promis
     }
     if (recordRow.deleted_at) {
       throw new MemoryRecordAlreadyDeletedError(input.memoryRecordId);
+    }
+
+    // Remove every derived embedding for every version of this record --
+    // before scrubbing version content, per this function's own doc
+    // comment. A DELETE, never a SUPERSEDED status flip: the embedding
+    // itself must stop existing, not merely stop being marked current.
+    await client.query(
+      `DELETE FROM memory_embeddings
+       WHERE tenant_id = $1
+         AND memory_record_version_id IN (
+             SELECT id
+             FROM memory_record_versions
+             WHERE tenant_id = $1
+               AND memory_record_id = $2
+         )`,
+      [input.tenantId, input.memoryRecordId],
+    );
+
+    if (options.injectFailureAfterEmbeddingDeletion) {
+      throw new Error("deleteMemoryRecord: test-only failure injection after embedding deletion, before version scrubbing");
     }
 
     const maxVersionResult = await client.query<{ max_version: number }>(
@@ -137,4 +172,25 @@ export async function deleteMemoryRecord(input: DeleteMemoryRecordInput): Promis
 
     return { memoryRecord: parsedRecord, deletionVersion: parsedVersion };
   });
+}
+
+/** Production entry point. Never accepts failure-injection input. */
+export async function deleteMemoryRecord(input: DeleteMemoryRecordInput): Promise<DeleteMemoryRecordResult> {
+  return runDeleteMemoryRecord(input, { injectFailureAfterEmbeddingDeletion: false });
+}
+
+/**
+ * PR 6 §28: test-only atomicity seam, mirroring
+ * transitionCognitiveRunForTest's exact pattern -- forces a rollback after
+ * derived embeddings are deleted but before version content scrubbing
+ * commits, to prove a mid-deletion failure restores everything (embeddings,
+ * historical content, parent state, current_version_id, deleted_at) rather
+ * than leaving a partially-deleted record. Rejected outside test context so
+ * this is not a reachable production code path.
+ */
+export async function deleteMemoryRecordForTest(input: DeleteMemoryRecordInput): Promise<DeleteMemoryRecordResult> {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("deleteMemoryRecordForTest may only be called with NODE_ENV=test");
+  }
+  return runDeleteMemoryRecord(input, { injectFailureAfterEmbeddingDeletion: true });
 }

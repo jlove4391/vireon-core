@@ -145,6 +145,45 @@ export const ResponseSynthesisOutputSchema = z.object({
 });
 export type ResponseSynthesisOutput = z.infer<typeof ResponseSynthesisOutputSchema>;
 
+// PR 6: query embedding happens during memory retrieval, before a
+// cognitive run necessarily exists (PR 4 creates the informational run
+// afterward) -- "memory_document" is the other purpose, used when embedding
+// a memory_record_versions row for storage. OpenAI itself exposes no
+// separate query/document embedding modes; `purpose` is durable operation
+// context for audit/evaluation, not a parameter that changes the provider
+// call.
+export const EmbeddingInputSchema = z.object({
+  text: z.string().min(1),
+  purpose: z.enum(["query", "memory_document"]),
+  dimensions: z.number().int().positive(),
+});
+export type EmbeddingInput = z.infer<typeof EmbeddingInputSchema>;
+
+export const EmbeddingOutputSchema = z.object({
+  embedding: z.array(z.number().finite()),
+  model: z.string().min(1),
+  dimensions: z.number().int().positive(),
+});
+export type EmbeddingOutput = z.infer<typeof EmbeddingOutputSchema>;
+
+/**
+ * PR 6 §5.1: the minimal identity every model-operation provider must
+ * supply for evidence recording (executeModelOperation.ts's
+ * insertStartedRow only ever reads providerId/modelId off of whatever
+ * provider it's given). LlmProvider extends this rather than the executor
+ * depending on LlmProvider's full six-method chat/structured-operation
+ * surface -- EmbeddingProvider (embeddingProvider.ts) implements this same
+ * minimal contract without pretending to support generateResponse/
+ * interpretIntent/plan/critique/extract/rerank, which it genuinely does not
+ * and never will (OpenAI has no chat completion role to play here; embedding
+ * is its own axis, see providerSelection.ts's own doc comment on why this
+ * is deliberately not reused).
+ */
+export interface ModelOperationProvider {
+  readonly providerId: string;
+  readonly modelId: string;
+}
+
 /**
  * Token usage for one provider call, in the shape migrations/0014's
  * model_invocations columns expect. All optional -- a provider (or the
@@ -206,10 +245,7 @@ export interface ProviderOperationCallResult {
  * existing Phase 6F model choice rather than inventing a new per-operation
  * model/quality tradeoff the handoff never asked for.
  */
-export interface LlmProvider {
-  readonly providerId: string;
-  readonly modelId: string;
-
+export interface LlmProvider extends ModelOperationProvider {
   generateResponse(context: LlmResponseContext, timeoutMs: number): Promise<string>;
   interpretIntent(input: IntentInterpretationInput, timeoutMs: number): Promise<ProviderOperationCallResult>;
   plan(input: PlanningInput, timeoutMs: number): Promise<ProviderOperationCallResult>;

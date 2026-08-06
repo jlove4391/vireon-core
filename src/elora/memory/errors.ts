@@ -62,3 +62,26 @@ export class MemoryRecordAlreadyDeletedError extends MemoryReviewError {
     this.name = "MemoryRecordAlreadyDeletedError";
   }
 }
+
+/** PR 6: raised by writeMemoryEmbedding.ts/embedMemoryRecordVersion.ts when the referenced memory_record_versions row doesn't exist for the given tenant. */
+export class MemoryRecordVersionNotFoundError extends MemoryReviewError {
+  constructor(public readonly memoryRecordVersionId: string) {
+    super(`MemoryRecordVersion ${memoryRecordVersionId} not found`);
+    this.name = "MemoryRecordVersionNotFoundError";
+  }
+}
+
+/**
+ * PR 6: a deletion-marker version (is_deletion_marker = true) can never be
+ * embedded -- its content is always the deletion tombstone, never real
+ * memory content. In practice this is implied by its parent record already
+ * being deleted (deleteMemoryRecord.ts always sets both together), but
+ * writeMemoryEmbedding.ts checks it independently as defense-in-depth
+ * rather than relying solely on the parent-deletion check.
+ */
+export class MemoryRecordVersionIsDeletionMarkerError extends MemoryReviewError {
+  constructor(public readonly memoryRecordVersionId: string) {
+    super(`MemoryRecordVersion ${memoryRecordVersionId} is a deletion marker and cannot be embedded`);
+    this.name = "MemoryRecordVersionIsDeletionMarkerError";
+  }
+}
