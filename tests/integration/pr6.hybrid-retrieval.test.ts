@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1071,6 +1071,14 @@ describe("PR 6: hybrid memory retrieval acceptance", () => {
       expect(ftsSourcedIds).toContain(ftsOnly.memoryRecordId);
       expect(result.records.map((record) => record.id)).not.toContain(historical.memoryRecordId);
       expect(result.records.map((record) => record.id)).not.toContain(deleted.memoryRecordId);
+
+      // PR 7 §20: an FTS-sourced result's matchedSnippet is real ts_headline()
+      // markup over the query terms that actually matched -- structurally
+      // derived from the same FTS computation that produced its ranking,
+      // never a fabricated or empty stand-in.
+      const ftsOnlyRecord = result.records.find((record) => record.id === ftsOnly.memoryRecordId)!;
+      expect(ftsOnlyRecord.retrieval.matchedSnippet).not.toBeNull();
+      expect(ftsOnlyRecord.retrieval.matchedSnippet).toContain("<b>");
     });
 
     it("26.12: vector ranking uses active/matching-model/fresh-hash current-version embeddings only", async () => {
@@ -1092,6 +1100,13 @@ describe("PR 6: hybrid memory retrieval acceptance", () => {
       const distances = result.records.map((record) => record.retrieval.vectorDistance).filter((value): value is number => value !== null);
       expect(distances.length).toBeGreaterThan(0);
       expect(distances.every(Number.isFinite)).toBe(true);
+
+      // PR 7 §20: a result found via vector search alone, with no FTS match
+      // at all, has nothing for ts_headline() to highlight -- matchedSnippet
+      // must be null, never an empty string standing in for "nothing to show."
+      const vectorOnlyRecord = result.records.find((record) => record.id === vectorOnly.memoryRecordId)!;
+      expect(vectorOnlyRecord.retrieval.sources).not.toContain("fts");
+      expect(vectorOnlyRecord.retrieval.matchedSnippet).toBeNull();
     });
 
     it("26.19: scope and record-type filters apply identically to FTS and vector candidate lists", async () => {
@@ -1191,6 +1206,18 @@ describe("PR 6: hybrid memory retrieval acceptance", () => {
 
       // eslint-disable-next-line no-console -- deliberate: the aggregate evaluation report is the point of this test, per §34's own reporting requirement.
       console.log(reports.map(formatEvaluationReport).join("\n\n"));
+
+      // PR 7 §20: a durable evaluation artifact, written by this test run
+      // itself -- not hand-authored -- so the actual Recall@5/Precision@5
+      // numbers have provable, ongoing value beyond a single CI checkmark,
+      // the same "materially provable, not just green" discipline every
+      // core-records/*.json report from Phase 1 onward already established.
+      const evaluationReport = {
+        generatedAt: new Date().toISOString(),
+        reports,
+      };
+      const reportPath = path.resolve(process.cwd(), "core-records/pr7-retrieval-evaluation.json");
+      writeFileSync(reportPath, `${JSON.stringify(evaluationReport, null, 2)}\n`, "utf8");
     });
   });
 });
