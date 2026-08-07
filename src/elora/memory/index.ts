@@ -3,6 +3,11 @@ export { promoteMemoryCandidate, type PromoteMemoryCandidateInput } from "./prom
 export { supersedeMemoryRecord, type SupersedeMemoryRecordInput } from "./supersedeMemoryRecord.js";
 export { deleteMemoryRecord, type DeleteMemoryRecordInput } from "./deleteMemoryRecord.js";
 export {
+  createMemoryRecordWithVersion,
+  type CreateMemoryRecordWithVersionInput,
+} from "./createMemoryRecordWithVersion.js";
+export { countUnversionedActiveMemoryRecords } from "./countUnversionedActiveMemoryRecords.js";
+export {
   MemoryReviewError,
   MemoryCandidateNotFoundError,
   InvalidCandidateReviewStateError,

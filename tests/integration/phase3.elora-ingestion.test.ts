@@ -10,19 +10,9 @@ import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { getWorkOrderDetail } from "../../tools/diagnostics/workOrder.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
 import { ensureDeterministicLlmPath } from "../../test-utils/ensureDeterministicLlmPath.js";
+import { seedMemoryRecord } from "../shared/seedMemoryRecord.js";
 
 type TestOutcome = "passed" | "failed";
-
-async function seedMemoryRecord(tenantId: string, content: string): Promise<string> {
-  return withTenantTransaction(tenantId, async (client) => {
-    const id = randomUUID();
-    await client.query(
-      "INSERT INTO memory_records (id, tenant_id, content, record_type, scope) VALUES ($1, $2, $3, $4, $5)",
-      [id, tenantId, content, "note", "project"],
-    );
-    return id;
-  });
-}
 
 async function countRunsAndToolInvocations(
   tenantId: string,
@@ -295,7 +285,8 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
   it("memory retrieval: a seeded MemoryRecord is retrieved and referenced in the response", async () => {
     const memoryContent =
       "CORE memory v1 planning notes: memory candidates must be reviewed before promotion to memory records.";
-    const memoryRecordId = await seedMemoryRecord(ctx.tenantId, memoryContent);
+    const seededRecord = await seedMemoryRecord({ tenantId: ctx.tenantId, content: memoryContent, recordType: "note", scope: "project" });
+    const memoryRecordId = seededRecord.id;
 
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,

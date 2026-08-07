@@ -15,6 +15,7 @@ import { HAPPY_PATH_INTERPRETED_INTENT, HAPPY_PATH_TASK_TYPE, HAPPY_PATH_TRANSIT
 import { transitionWorkOrder } from "../../src/state/transitionWorkOrder.js";
 import { listMemoryCandidates } from "../../tools/diagnostics/memory.js";
 import { seedBaseContext, type SeededContext } from "../../test-utils/dbTestContext.js";
+import { seedMemoryRecord } from "../shared/seedMemoryRecord.js";
 
 async function seedProposedCandidate(
   ctx: SeededContext,
@@ -74,16 +75,17 @@ describe("Phase 6G: Memory Review & Promotion acceptance", () => {
     // against freshly-seeded rows shaped like what pre-migration data
     // looked like.
     const candidateId = randomUUID();
-    const recordId = randomUUID();
+    const seededRecord = await seedMemoryRecord({
+      tenantId: ctx.tenantId,
+      content: "stale-labeled record",
+      scope: "project",
+    });
+    const recordId = seededRecord.id;
     await withTenantTransaction(ctx.tenantId, async (client) => {
       await client.query(
         `INSERT INTO memory_candidates (id, tenant_id, candidate_content, scope, review_status)
          VALUES ($1, $2, 'stale-labeled candidate', 'project', 'proposed')`,
         [candidateId, ctx.tenantId],
-      );
-      await client.query(
-        `INSERT INTO memory_records (id, tenant_id, content, scope) VALUES ($1, $2, 'stale-labeled record', 'project')`,
-        [recordId, ctx.tenantId],
       );
 
       await client.query("UPDATE memory_candidates SET scope = 'general' WHERE scope = 'project'");
