@@ -35,6 +35,7 @@
     "test:pr4-cognitive-coordinator": "vitest run tests/integration/pr4.cognitive-coordinator.test.ts",
     "test:pr5-memory-versioning": "vitest run tests/integration/pr5.memory-versioning.test.ts",
     "test:pr6-hybrid-retrieval": "vitest run tests/integration/pr6.hybrid-retrieval.test.ts tests/integration/pr6.openai-embedding-live-smoke.test.ts",
+    "test:pr8-entity-claim-schema": "vitest run tests/integration/pr8.entity-claim-schema.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:worktree": "tsx scripts/setupWorktreeDatabase.ts",
     "setup:dev": "pnpm db:worktree && pnpm db:migrate && pnpm seed:dev-identity",
