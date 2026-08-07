@@ -59,6 +59,17 @@ export interface HybridRetrievedMemoryRecord extends RetrievedMemoryRecord {
     vectorRank: number | null;
     rrfScore: number;
     vectorDistance: number | null;
+    /**
+     * PR 7 §20: query-term highlighting markup (Postgres's own
+     * ts_headline(), default StartSel/StopSel of <b>/</b>) over the exact
+     * content the FTS ranking already scored -- never a new LLM call
+     * generating a written explanation, same "do not make the model invent
+     * citations from prose" discipline PR 6 already locked for citations.
+     * null (never an empty string) specifically when this result came from
+     * vector search alone with no FTS match at all -- there is nothing to
+     * highlight, so nothing is fabricated to stand in for it.
+     */
+    matchedSnippet: string | null;
   };
 }
 
@@ -233,10 +244,13 @@ interface CandidateRow {
   version_number: number;
   content: string;
   version_created_at: string | Date;
+  /** Only ever present on an FTS-sourced row (queryVectorCandidates never selects it) -- absent, not null, on a vector-only row. */
+  matched_snippet?: string;
 }
 
 interface FtsCandidateRow extends CandidateRow {
   fts_score: number;
+  matched_snippet: string;
 }
 
 interface VectorCandidateRow extends CandidateRow {
@@ -273,7 +287,8 @@ async function queryFtsCandidates(
           mrv.version_number,
           mrv.content,
           mrv.created_at AS version_created_at,
-          ts_rank_cd(to_tsvector('english', mrv.content), plainto_tsquery('english', $2)) AS fts_score
+          ts_rank_cd(to_tsvector('english', mrv.content), plainto_tsquery('english', $2)) AS fts_score,
+          ts_headline('english', mrv.content, plainto_tsquery('english', $2)) AS matched_snippet
        FROM memory_records mr
        JOIN memory_record_versions mrv
          ON mrv.id = mr.current_version_id
@@ -487,6 +502,7 @@ export async function retrieveHybridMemory(
       ftsRank: entry.ftsRank,
       vectorRank: entry.vectorRank,
       rrfScore: entry.rrfScore,
+      matchedSnippet: row.matched_snippet ?? null,
       vectorDistance: vectorDistanceById.get(row.memory_record_id) ?? null,
     },
   }));

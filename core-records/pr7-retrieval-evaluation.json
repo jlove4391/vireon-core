@@ -1,0 +1,77 @@
+{
+  "generatedAt": "2026-08-07T00:49:17.029Z",
+  "reports": [
+    {
+      "query": "What is the vendor renewal timeline for Acme Corp?",
+      "expectedIds": [
+        "c1e3630a-872e-4a4b-8daf-2aa94b6df3d0",
+        "af5f7337-7a79-4471-b3a9-79a8ce8c3460",
+        "769b2f90-eff6-4a8c-b192-b1cecb66101d",
+        "bc1f8f1b-2ce1-433d-9719-cd73cfc9abb6",
+        "c09a33a1-d0ea-4335-8e48-a7f22f17bc5e"
+      ],
+      "retrievedIds": [
+        "c1e3630a-872e-4a4b-8daf-2aa94b6df3d0",
+        "c09a33a1-d0ea-4335-8e48-a7f22f17bc5e",
+        "af5f7337-7a79-4471-b3a9-79a8ce8c3460",
+        "bc1f8f1b-2ce1-433d-9719-cd73cfc9abb6",
+        "769b2f90-eff6-4a8c-b192-b1cecb66101d"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 1
+    },
+    {
+      "query": "What are the office relocation plans?",
+      "expectedIds": [
+        "d51e202f-c469-45ba-aa82-678e08a32269",
+        "c09a33a1-d0ea-4335-8e48-a7f22f17bc5e"
+      ],
+      "retrievedIds": [
+        "d51e202f-c469-45ba-aa82-678e08a32269",
+        "c09a33a1-d0ea-4335-8e48-a7f22f17bc5e",
+        "107feca6-2520-4848-878d-ef9cda10a9c2",
+        "973dec17-6ef4-4749-963c-d8a5915c7d34",
+        "c14091ef-8a1b-4fc9-b605-5db86d3eeee6"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.4
+    },
+    {
+      "query": "database migration",
+      "expectedIds": [
+        "107feca6-2520-4848-878d-ef9cda10a9c2"
+      ],
+      "retrievedIds": [
+        "107feca6-2520-4848-878d-ef9cda10a9c2"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.2
+    },
+    {
+      "query": "database migration",
+      "expectedIds": [
+        "107feca6-2520-4848-878d-ef9cda10a9c2"
+      ],
+      "retrievedIds": [
+        "107feca6-2520-4848-878d-ef9cda10a9c2"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.2
+    },
+    {
+      "query": "annual conference schedule",
+      "expectedIds": [
+        "d8a73da7-df86-440d-9fea-3de7011f04bc"
+      ],
+      "retrievedIds": [
+        "d8a73da7-df86-440d-9fea-3de7011f04bc",
+        "5e3e3fa8-a066-4c74-a9d6-a481a0399578",
+        "973dec17-6ef4-4749-963c-d8a5915c7d34",
+        "107feca6-2520-4848-878d-ef9cda10a9c2",
+        "c14091ef-8a1b-4fc9-b605-5db86d3eeee6"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.2
+    }
+  ]
+}

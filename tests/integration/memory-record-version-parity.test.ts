@@ -23,7 +23,7 @@ import { seedMemoryRecord } from "../shared/seedMemoryRecord.js";
  * createMemoryRecordWithVersion() core promoteMemoryCandidate.ts uses in
  * production, closing that gap for every current and future caller.
  */
-describe("PR 7: memory record version parity in test seeding", () => {
+describe("Memory record version parity in test seeding", () => {
   let ctx: SeededContext;
 
   beforeAll(async () => {
