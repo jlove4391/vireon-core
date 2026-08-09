@@ -88,7 +88,6 @@ export function PersonaConsole({ persona }: PersonaConsoleProps) {
         />
         <div>
           <h1 className="font-heading text-lg font-semibold text-text-primary">{persona.name}</h1>
-          <p className="text-xs text-text-secondary">{persona.corporateRole}</p>
         </div>
       </header>
 

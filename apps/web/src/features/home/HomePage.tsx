@@ -18,9 +18,6 @@ export function HomePage() {
           A persistent operating environment for human-AI collaboration -- context preserved, intelligence
           coordinated, work carried across time.
         </p>
-        <p className="mt-2 text-body text-text-secondary">
-          Talk to {ELORA_PERSONA.name}, {ELORA_PERSONA.formalTitle}, and watch her use a tool for real.
-        </p>
         <Link to="/elora" className="mt-8 inline-block">
           <Button>Enter the ELORA console</Button>
         </Link>
