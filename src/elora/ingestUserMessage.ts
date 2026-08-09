@@ -370,12 +370,16 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
         authorityOutcome: null,
         finalWorkOrderStatus: null,
         transitionPath: [],
-        // §7: a substantiated completion (MODEL or DETERMINISTIC_FALLBACK
-        // source, both COMPLETED per §4.2) is a genuine direct answer; the
-        // absolute placeholder (FAILED) is the same clarification text this
-        // branch already returned before this PR, so it keeps the same
-        // responseType.
-        responseType: informationalResult.finalStatus === "COMPLETED" ? "direct_answer" : "clarification_required",
+        // ADR 0008 §7: keyed off responseSource, not finalStatus -- a
+        // MODEL or DETERMINISTIC_FALLBACK answer is a genuine direct
+        // answer regardless of whether the run's bookkeeping status is
+        // COMPLETED or FAILED (a provider-selection failure legitimately
+        // produces a real DETERMINISTIC_FALLBACK answer while the
+        // cognitive run itself still correctly ends FAILED, since no
+        // model_invocations row is possible to substantiate COMPLETED).
+        // Only UNSUBSTANTIATED (the absolute placeholder, no real answer
+        // produced at all) is a genuine clarification-required response.
+        responseType: informationalResult.responseSource === "UNSUBSTANTIATED" ? "clarification_required" : "direct_answer",
         responseText: informationalResult.responseText,
         actionReceiptId: null,
         blockedReceiptId: null,

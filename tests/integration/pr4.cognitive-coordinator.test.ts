@@ -459,7 +459,14 @@ describe("PR 4: cognitive coordinator acceptance", () => {
     });
 
     expect(result.intent.intent_type).toBe("informational");
-    expect(result.responseType).toBe("clarification_required");
+    // Genuinely a direct answer, not a clarification request -- the
+    // response is a real DETERMINISTIC_FALLBACK answer, even though the
+    // cognitive run's own bookkeeping status is FAILED (§4.1's completion
+    // substantiation gate correctly blocks COMPLETED with no model
+    // invocation, but that's a run-status question, not a response-content
+    // one). This is the exact assertion that was correct-but-wrong against
+    // the pre-ADR-0008 finalStatus-keyed responseType logic.
+    expect(result.responseType).toBe("direct_answer");
     expect(result.responseText).not.toBe(ABSOLUTE_FALLBACK_TEXT);
     expect(result.responseText).toContain("Any update on the office relocation plans?");
     expect(result.responseText).toContain("I don't have additional prior context on record for this one.");

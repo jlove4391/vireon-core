@@ -46,6 +46,15 @@ export interface InformationalCognitiveRunResult {
   modelInvocationId: string | null;
   responseText: string;
   finalStatus: "COMPLETED" | "FAILED";
+  /**
+   * Reuses executeModelOperation.ts's own "MODEL" | "DETERMINISTIC_FALLBACK"
+   * vocabulary (src/elora/llm/executeModelOperation.ts) rather than
+   * inventing new casing/terms -- this is that same distinction, just
+   * finally propagated out of the coordinator instead of staying internal.
+   * "UNSUBSTANTIATED" is the new third case this field adds: no real
+   * answer was produced at all, only the absolute placeholder.
+   */
+  responseSource: "MODEL" | "DETERMINISTIC_FALLBACK" | "UNSUBSTANTIATED";
 }
 
 /**
@@ -111,6 +120,11 @@ async function loadExistingRunOutcome(tenantId: string, cognitiveRun: CognitiveR
     modelInvocationId,
     responseText: ABSOLUTE_FALLBACK_RESPONSE_TEXT,
     finalStatus: cognitiveRun.status === "COMPLETED" ? "COMPLETED" : "FAILED",
+    // Honest, not a fix: the text returned here is always the placeholder
+    // (see this function's own doc comment on why), regardless of whether
+    // the original attempt actually produced a real answer -- so it's
+    // never MODEL/DETERMINISTIC_FALLBACK, even on a COMPLETED reload.
+    responseSource: "UNSUBSTANTIATED",
   };
 }
 
@@ -121,10 +135,11 @@ async function loadExistingRunOutcome(tenantId: string, cognitiveRun: CognitiveR
  * §13.8/§14 require the user-facing outcome to stay safe either way, never
  * that this secondary transition itself must succeed. Never throws.
  *
- * responseText defaults to the absolute placeholder for genuinely
- * unexpected failures, but ADR 0008 §7/§3 callers (a known, anticipated
- * provider-configuration failure) pass the honest deterministic answer
- * instead -- see the provider-selection catch below for why.
+ * responseText/responseSource default to the absolute placeholder /
+ * "UNSUBSTANTIATED" for genuinely unexpected failures, but ADR 0008 §7/§3
+ * callers (a known, anticipated provider-configuration failure) pass the
+ * honest deterministic answer and "DETERMINISTIC_FALLBACK" instead -- see
+ * the provider-selection catch below for why.
  */
 async function failRun(
   input: RunInformationalCognitiveRunInput,
@@ -132,6 +147,7 @@ async function failRun(
   reason: string,
   modelInvocationId: string | null,
   responseText: string = ABSOLUTE_FALLBACK_RESPONSE_TEXT,
+  responseSource: InformationalCognitiveRunResult["responseSource"] = "UNSUBSTANTIATED",
 ): Promise<InformationalCognitiveRunResult> {
   try {
     await transitionCognitiveRun({
@@ -152,6 +168,7 @@ async function failRun(
     modelInvocationId,
     responseText,
     finalStatus: "FAILED",
+    responseSource,
   };
 }
 
@@ -216,6 +233,7 @@ export async function runInformationalCognitiveRun(
           modelInvocationId: null,
           responseText: ABSOLUTE_FALLBACK_RESPONSE_TEXT,
           finalStatus: "FAILED",
+          responseSource: "UNSUBSTANTIATED",
         };
       }
 
@@ -245,6 +263,7 @@ export async function runInformationalCognitiveRun(
           "Model provider is not configured or unavailable; degraded to the deterministic informational answer.",
           null,
           produceDeterministicInformationalAnswer(input.userMessageContent, input.retrievedMemory),
+          "DETERMINISTIC_FALLBACK",
         );
       }
 
@@ -297,6 +316,7 @@ export async function runInformationalCognitiveRun(
           modelInvocationId: result.invocationId,
           responseText: result.value.responseText,
           finalStatus: "COMPLETED",
+          responseSource: result.source,
         };
       } catch {
         // Truly unexpected only, now that provider selection has its own
