@@ -433,13 +433,20 @@ describe("PR 4: cognitive coordinator acceptance", () => {
     expect(completed.cognitiveRun.status).toBe("COMPLETED");
   });
 
-  it("13.8 & 13.10 (FAILED branch): an unexpected coordinator-boundary failure (provider misconfiguration) transitions RUNNING -> FAILED and never leaks a raw exception", async () => {
+  it("13.8 & 13.10 (FAILED branch, ADR 0008 §7 degraded routing): a missing/misconfigured provider transitions RUNNING -> FAILED, never leaks a raw exception, and returns the honest deterministic answer instead of the generic placeholder", async () => {
     const ctx = await seedBaseContext();
     // readProviderKindFromEnv() throws a plain Error here -- this happens
     // entirely outside executeModelOperation.ts's own try/catch boundary
-    // (no operation has even started yet), so it exercises the
-    // coordinator's own outer catch, not the operation executor's typed
-    // { ok: false } failure path already covered by 13.3/13.4/13.5.
+    // (no operation has even started yet), so it exercises
+    // runInformationalCognitiveRun.ts's own dedicated provider-selection
+    // catch (ADR 0008 §7), not the operation executor's typed { ok: false }
+    // failure path already covered by 13.3/13.4/13.5. Per ADR 0008 §3, a
+    // missing provider is a known, anticipated degraded-routing condition,
+    // not a "truly unexpected" coordinator failure -- so the cognitive run
+    // still correctly ends FAILED (no model_invocations row is possible),
+    // but the user-visible text is the real, memory-grounded deterministic
+    // answer, never the generic "I need more information" placeholder that
+    // reads like ELORA is soliciting clarification to build a WorkOrder.
     delete process.env.MODEL_PROVIDER;
 
     const result = await ingestUserMessage({
@@ -453,7 +460,9 @@ describe("PR 4: cognitive coordinator acceptance", () => {
 
     expect(result.intent.intent_type).toBe("informational");
     expect(result.responseType).toBe("clarification_required");
-    expect(result.responseText).toBe(ABSOLUTE_FALLBACK_TEXT);
+    expect(result.responseText).not.toBe(ABSOLUTE_FALLBACK_TEXT);
+    expect(result.responseText).toContain("Any update on the office relocation plans?");
+    expect(result.responseText).toContain("I don't have additional prior context on record for this one.");
     expect(result.modelInvocationId).toBeNull();
     expect(result.cognitiveRunId).not.toBeNull();
     expect(providerMockState.anthropic.constructedCount).toBe(0);

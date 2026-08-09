@@ -10,7 +10,12 @@ const TASK_TYPE_CUES: ReadonlyArray<{ taskType: EloraTaskType; pattern: RegExp }
   { taskType: "memory", pattern: /\b(remember|recall|memory)\b/i },
 ];
 
-const ACTIONABLE_CUE = /\b(help me|create|build|send|deploy|implement|analyz|write|make|do|steal|manufactur)\b/i;
+// ADR 0008 §7: bare "do" was removed -- it's an auxiliary verb, not an
+// action verb, and matched ordinary questions ("what do you...", "how do
+// I...") indistinguishably from real imperatives, misrouting them into the
+// WorkOrder branch. Every genuine actionable verb this cue is meant to
+// catch is already covered by the remaining entries.
+const ACTIONABLE_CUE = /\b(help me|create|build|send|deploy|implement|analyz|write|make|steal|manufactur)\b/i;
 
 // Phase 5 §10: one narrow, deterministic pattern for explicit local
 // Markdown creation requests -- structured extraction via capture groups,

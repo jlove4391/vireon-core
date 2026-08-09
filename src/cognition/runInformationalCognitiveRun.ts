@@ -115,17 +115,23 @@ async function loadExistingRunOutcome(tenantId: string, cognitiveRun: CognitiveR
 }
 
 /**
- * Best-effort RUNNING -> FAILED transition plus the absolute placeholder
+ * Best-effort RUNNING -> FAILED transition plus a caller-supplied response
  * result. "Best-effort" because the run may no longer be in a state that
  * can reach FAILED (e.g. a genuinely unexpected concurrent mutation) --
  * §13.8/§14 require the user-facing outcome to stay safe either way, never
  * that this secondary transition itself must succeed. Never throws.
+ *
+ * responseText defaults to the absolute placeholder for genuinely
+ * unexpected failures, but ADR 0008 §7/§3 callers (a known, anticipated
+ * provider-configuration failure) pass the honest deterministic answer
+ * instead -- see the provider-selection catch below for why.
  */
 async function failRun(
   input: RunInformationalCognitiveRunInput,
   cognitiveRunId: string,
   reason: string,
   modelInvocationId: string | null,
+  responseText: string = ABSOLUTE_FALLBACK_RESPONSE_TEXT,
 ): Promise<InformationalCognitiveRunResult> {
   try {
     await transitionCognitiveRun({
@@ -144,7 +150,7 @@ async function failRun(
   return {
     cognitiveRunId,
     modelInvocationId,
-    responseText: ABSOLUTE_FALLBACK_RESPONSE_TEXT,
+    responseText,
     finalStatus: "FAILED",
   };
 }
@@ -213,9 +219,36 @@ export async function runInformationalCognitiveRun(
         };
       }
 
+      // ADR 0008 §7/§3: provider selection is split into its own try/catch,
+      // separate from the "truly unexpected" catch-all below. A missing or
+      // misconfigured provider (e.g. MODEL_PROVIDER set but its API key
+      // unset) is a known, anticipated condition -- .env.example documents
+      // it as the intended graceful-degradation case ("if unset, ELORA
+      // falls back to the deterministic template response for every
+      // branch") -- not a genuinely unexpected coordinator failure. No
+      // model_invocations row is possible here (no provider object ever
+      // existed to attempt a call with), so transitionCognitiveRun.ts's
+      // completion substantiation gate (§4.1) still correctly keeps this
+      // run FAILED rather than COMPLETED; what changes is the response
+      // text the user actually sees. Per the degraded-routing contract
+      // (§3), this returns a real, honest, deterministic conversational
+      // answer -- never the generic "I need more information" placeholder,
+      // which reads exactly like ELORA soliciting clarification to build a
+      // WorkOrder, and never a WorkOrder, tool call, or delegation either.
+      let provider: LlmProvider;
       try {
-        const provider = selectConfiguredProvider();
+        provider = selectConfiguredProvider();
+      } catch {
+        return failRun(
+          input,
+          cognitiveRun.id,
+          "Model provider is not configured or unavailable; degraded to the deterministic informational answer.",
+          null,
+          produceDeterministicInformationalAnswer(input.userMessageContent, input.retrievedMemory),
+        );
+      }
 
+      try {
         const context: LlmResponseContext = {
           persona: ELORA_PERSONA,
           userMessageContent: input.userMessageContent,
@@ -266,11 +299,11 @@ export async function runInformationalCognitiveRun(
           finalStatus: "COMPLETED",
         };
       } catch {
-        // Truly unexpected: provider selection/configuration failure, or a
-        // coordinator-level exception outside executeModelOperation.ts's own
-        // { ok: false } error boundary. Never leaked to the caller as a raw
-        // exception -- always the safe placeholder plus a best-effort FAILED
-        // transition.
+        // Truly unexpected only, now that provider selection has its own
+        // catch above: a coordinator-level exception outside
+        // executeModelOperation.ts's own { ok: false } error boundary.
+        // Never leaked to the caller as a raw exception -- always the safe
+        // placeholder plus a best-effort FAILED transition.
         return failRun(input, cognitiveRun.id, FAILED_REASON, null);
       }
     },
