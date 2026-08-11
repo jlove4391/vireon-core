@@ -82,6 +82,7 @@ describe("PR 0: observability foundation acceptance", () => {
       content: "Help me create a project plan for CORE memory v1",
       sourceSurface: "pr0-observability-test",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.finalWorkOrderStatus).toBe("READY_TO_ACT");
@@ -157,6 +158,7 @@ describe("PR 0: observability foundation acceptance", () => {
         content: "Help me create a project plan for a second, distinct exporter-failure request",
         sourceSurface: "pr0-observability-test",
         sourceCorrelationId: randomUUID(),
+        isSystemInitiated: true,
       });
 
       expect(result.finalWorkOrderStatus).toBe("READY_TO_ACT");

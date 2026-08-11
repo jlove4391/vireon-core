@@ -1,21 +1,19 @@
 {
   "status": "passed",
   "phase": "phase4_receipts_authority_v2",
-  "timestamp": "2026-07-12T14:29:12.629Z",
-  "tenant_id": "0267eb76-1753-494b-8e05-d90f66c90d7c",
+  "timestamp": "2026-08-11T02:55:07.925Z",
+  "tenant_id": "e16f72cc-50f5-4365-996a-90c6bd852edb",
   "branch_work_order_ids": {
-    "act_and_report": "3491eed0-596c-40ff-a460-c5546f5aac68",
-    "escalate": "8135c9cc-bdd6-45d8-89d3-ceecaef4b46b",
-    "setup_required": "f6d0dcdb-da3a-4cb9-97ec-b4ebc8fe188b",
-    "capability_missing": "21dcb80b-8d57-4a7a-9113-d90b3160c026",
-    "refuse": "3206cb32-7a0f-48e1-bc83-834b53277fcb"
+    "act_and_report": "74b2d9ef-e592-44ff-9411-2c1130b7b0e1",
+    "escalate": "2f5263e1-c0df-4f79-ad9d-0f58e1551ed1",
+    "setup_required": "90a744d4-3dd7-4977-8e59-47db161678b7",
+    "capability_missing": "c69799b0-5903-4768-bf68-84a3e876dd93"
   },
   "branch_receipt_ids": {
-    "act_and_report": "e9b1bc0d-cd4c-4b3d-b810-311f1879ed0c",
-    "escalate": "5bf3bdd3-b8ab-43ba-b127-061ac8acf2cf",
-    "setup_required": "5c08af08-3b81-4b00-b149-8ef53df33a32",
-    "capability_missing": "2771b9c1-03ca-437a-9a27-0ad8f0345970",
-    "refuse": "4132f668-6e71-4482-88ae-de27a8469dbe"
+    "act_and_report": "1a6895d7-b9e4-47ff-a25d-597429af5f39",
+    "escalate": "d5fbd02e-17a7-4494-b5e7-90de9858cff4",
+    "setup_required": "5c25a4a4-e72b-492a-b362-b4a48470b3eb",
+    "capability_missing": "4eeaf5fd-9a09-49bf-9210-311e4b457401"
   },
   "branch_tests": {
     "act": "passed",

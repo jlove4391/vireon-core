@@ -13,7 +13,12 @@ export interface ClassifyAuthorityInput {
 // escalate, and both are checked before the setup_required rule, so a
 // request like "send an email and deploy to production" escalates
 // floor-protected regardless of what task_type parseIntent assigned it.
-const REFUSE_CUE = /\b(steal|exfiltrat)\b/i;
+// Exported (not just module-private) so ADR 0008 Realignment A's degraded-mode
+// classifier (parseIntent.ts) and routing policy (resolveEloraRoute.ts) can
+// reuse this exact safety-critical pattern rather than maintaining a second,
+// possibly-drifting copy of it -- ADR 0008 §3 requires hard safety/refusal
+// rules to stay active regardless of model availability.
+export const REFUSE_CUE = /\b(steal|exfiltrat)\b/i;
 const CAPABILITY_MISSING_CUE = /\b(3d|cad|manufactur|physical (prototype|part)|3d[- ]?print)\b/i;
 
 // Phase 6C §4.1: the original single EXTERNAL_SIDE_EFFECT_CUE is split so

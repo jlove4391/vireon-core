@@ -1,10 +1,10 @@
 {
   "status": "passed",
   "phase": "phase5_tool_registry_v1",
-  "timestamp": "2026-07-12T19:51:09.103Z",
-  "tenant_id": "6400dd49-ac30-43a7-924a-e6866aef8a85",
-  "end_to_end_work_order_id": "85a6de03-4b99-4de7-a915-f97b4e6cfd7a",
-  "end_to_end_artifact_id": "102a9fab-9632-4a52-b6c6-cb6dff512edc",
+  "timestamp": "2026-08-11T02:55:05.245Z",
+  "tenant_id": "0c37b362-fc67-4b3e-a4fe-9b4708f39100",
+  "end_to_end_work_order_id": "e3bc5e20-8acc-41c8-b027-b8f4e862593b",
+  "end_to_end_artifact_id": "47dbf7fe-dda2-42ec-8312-5aec38151f80",
   "results": {
     "registry_all_three": "passed",
     "registry_unique_names": "passed",
@@ -15,7 +15,7 @@
     "workspace_absolute_rejected": "passed",
     "workspace_traversal_rejected": "passed",
     "workspace_windows_escape_rejected": "passed",
-    "workspace_symlink_rejected": "passed",
+    "workspace_symlink_rejected": "skipped",
     "workspace_size_limit_rejected": "passed",
     "workspace_no_overwrite": "passed",
     "invocation_success": "passed",

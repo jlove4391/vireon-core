@@ -232,6 +232,14 @@ export async function fireDueTrigger(
       content: fresh.synthetic_message_content,
       sourceSurface: "scheduled_trigger",
       sourceCorrelationId: buildIdempotencyKey([tenantId, fresh.id, occurrenceTimestamp]),
+      // ADR 0008 Realignment A: a scheduled trigger firing is pre-authorized
+      // background work (createScheduledTrigger.ts already ran its own
+      // authority resolution at creation time), not an ad-hoc conversational
+      // message -- this is the one flag resolveEloraRoute.ts's routing
+      // policy consults to still create a real WorkOrder for a durable_work
+      // route here, while an ordinary user's durable_work request gets
+      // honest acknowledgment only.
+      isSystemInitiated: true,
     });
 
     const nextFireAt =

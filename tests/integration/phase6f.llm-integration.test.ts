@@ -215,6 +215,7 @@ describe("Phase 6F: real pipeline wiring -- ordering and fallback, via mocked An
       content: "Help me draft a project plan for the initiative.",
       sourceSurface: "phase6f-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(mockState.calls).toHaveLength(1);
@@ -239,6 +240,7 @@ describe("Phase 6F: real pipeline wiring -- ordering and fallback, via mocked An
       content: "Send an email to the team and deploy this to production.",
       sourceSurface: "phase6f-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(mockState.calls).toHaveLength(1);

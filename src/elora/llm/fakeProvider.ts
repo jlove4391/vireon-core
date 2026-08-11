@@ -57,10 +57,17 @@ export class FakeLlmProvider implements LlmProvider {
     }
     return {
       output: {
-        intentType: "work_order_candidate",
-        taskType: "unknown",
+        route: "converse",
+        interpretedIntent: input.content.slice(0, 200),
         confidence: 0.8,
-        summary: input.content.slice(0, 200),
+        taskDomain: null,
+        requestedCapabilities: [],
+        proposedDelegationTarget: null,
+        requiresDurableWork: false,
+        proposedToolNeeds: [],
+        externalSideEffect: false,
+        requiresClarification: false,
+        clarifyingQuestion: null,
       },
       usage: { inputTokens: 42, outputTokens: 12 },
     };

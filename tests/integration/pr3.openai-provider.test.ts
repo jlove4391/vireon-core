@@ -45,7 +45,19 @@ function validTextFor(params: { text?: { format?: { name?: string } }; input?: A
   }
   const developerContent = params.input?.[0]?.content ?? "";
   if (developerContent.includes("structured intent classifier")) {
-    return JSON.stringify({ intentType: "informational", taskType: "unknown", confidence: 0.7, summary: "mocked summary" });
+    return JSON.stringify({
+      route: "converse",
+      interpretedIntent: "mocked interpretation",
+      confidence: 0.7,
+      taskDomain: null,
+      requestedCapabilities: [],
+      proposedDelegationTarget: null,
+      requiresDurableWork: false,
+      proposedToolNeeds: [],
+      externalSideEffect: false,
+      requiresClarification: false,
+      clarifyingQuestion: null,
+    });
   }
   if (developerContent.includes("planning assistant")) {
     return JSON.stringify({ steps: [{ description: "mocked step" }] });
@@ -108,7 +120,20 @@ function buildResponseForScenario(scenario: OpenAIMockScenario, params: Paramete
       return {
         ...base,
         output: messageOutput(
-          JSON.stringify({ intentType: "informational", taskType: "unknown", confidence: 0.5, summary: "ok", extraHackerField: "nope" }),
+          JSON.stringify({
+            route: "converse",
+            interpretedIntent: "ok",
+            confidence: 0.5,
+            taskDomain: null,
+            requestedCapabilities: [],
+            proposedDelegationTarget: null,
+            requiresDurableWork: false,
+            proposedToolNeeds: [],
+            externalSideEffect: false,
+            requiresClarification: false,
+            clarifyingQuestion: null,
+            extraHackerField: "nope",
+          }),
         ),
       };
     case "rerank-unknown":
@@ -425,7 +450,19 @@ describe("PR 3: OpenAI direct provider + content-policy boundary acceptance", ()
         interpretIntent: async (input) => {
           receivedContent = input.content;
           return {
-            output: { intentType: "informational", taskType: "unknown", confidence: 0.5, summary: "ok" },
+            output: {
+              route: "converse",
+              interpretedIntent: "ok",
+              confidence: 0.5,
+              taskDomain: null,
+              requestedCapabilities: [],
+              proposedDelegationTarget: null,
+              requiresDurableWork: false,
+              proposedToolNeeds: [],
+              externalSideEffect: false,
+              requiresClarification: false,
+              clarifyingQuestion: null,
+            },
             usage: { inputTokens: 1, outputTokens: 1 },
           };
         },

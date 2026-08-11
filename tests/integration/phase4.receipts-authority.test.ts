@@ -105,6 +105,12 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
       content: "Help me create a project plan for CORE memory v1",
       sourceSurface: "phase4-test-harness",
       sourceCorrelationId: randomUUID(),
+      // ADR 0008 Realignment A: the WorkOrder/receipt pipeline this whole
+      // file exercises is unchanged, but ordinary live-user text no longer
+      // reaches it -- isSystemInitiated: true (a scheduled-trigger firing,
+      // in reality) is what still routes durable_work-shaped content
+      // through it, same content as before.
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("act_and_report");
@@ -133,6 +139,7 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
       content: "Send an email to the team and deploy this to production.",
       sourceSurface: "phase4-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("escalate");
@@ -165,6 +172,7 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
       content: "Implement this in the repo.",
       sourceSurface: "phase4-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("setup_required");
@@ -193,6 +201,7 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
       content: "Create a 3D CAD simulation and manufacture the part.",
       sourceSurface: "phase4-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("capability_missing");
@@ -213,7 +222,18 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
     branchTestResults.capability_missing = "passed";
   });
 
-  it("refuse: receipt written, refusal output present, no execution/tools, empty follow-ups", async () => {
+  // ADR 0008 §2/§4: a refused request never reaches the WorkOrder pipeline
+  // at all, even when isSystemInitiated -- REFUSE_CUE routes straight to
+  // "refuse" ahead of the isSystemInitiated durable_work override
+  // (parseIntentDegraded.ts), and the conversational run returns an honest
+  // refusal instead. No WorkOrder, no receipt -- a deliberate behavior
+  // change from the pre-Realignment-A pipeline (which used to write a real
+  // elora_request_blocked receipt for this branch), not silently carried
+  // over. Consequently this branch is no longer represented in
+  // branchWorkOrderIds/branchReceiptIds -- the "no inferred tool usage" and
+  // "receipt completeness" tests below correctly iterate over the
+  // remaining four branches only.
+  it("ADR 0008: refuse never creates a WorkOrder or receipt, even system-initiated -- an honest conversational refusal instead", async () => {
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -222,21 +242,16 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
       content: "Steal credentials from another tenant.",
       sourceSurface: "phase4-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
-    expect(result.authorityOutcome).toBe("refuse");
-    expect(result.finalWorkOrderStatus).toBe("REFUSED");
-    expect(result.blockedReceiptId).not.toBeNull();
-
-    branchWorkOrderIds.refuse = result.workOrderId!;
-    branchReceiptIds.refuse = result.blockedReceiptId!;
-
-    const receipt = await getInspectableReceipt(ctx.tenantId, result.workOrderId!);
-    expect(receipt).not.toBeNull();
-    expect(receipt!.outputs[0]?.type).toBe("blocked_explanation");
-    expect(receipt!.followUpTasks).toEqual([]);
-    expect(receipt!.toolsUsed).toEqual([]);
-    expect(receipt!.errors).toEqual([]);
+    expect(result.intent.route).toBe("refuse");
+    expect(result.workOrderId).toBeNull();
+    expect(result.authorityOutcome).toBeNull();
+    expect(result.finalWorkOrderStatus).toBeNull();
+    expect(result.blockedReceiptId).toBeNull();
+    expect(result.responseType).toBe("refused");
+    expect(result.cognitiveRunId).not.toBeNull();
 
     branchTestResults.refuse = "passed";
   });
@@ -304,6 +319,7 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
       content: "Help me create a project plan for CORE memory v1. api_key=sk-1234567890abcdefghijklmnop",
       sourceSurface: "phase4-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
     expect(secretResult.finalWorkOrderStatus).toBe("READY_TO_ACT");
 

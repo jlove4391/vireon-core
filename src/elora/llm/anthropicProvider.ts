@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { ELORA_INTENT_TYPES, ELORA_TASK_TYPES } from "../types.js";
+import { ELORA_ROUTES } from "../types.js";
 import type {
   CritiqueInput,
   ExtractionInput,
@@ -226,13 +226,15 @@ export class AnthropicProvider implements LlmProvider {
   async interpretIntent(input: IntentInterpretationInput, timeoutMs: number): Promise<ProviderOperationCallResult> {
     const client = new Anthropic({ apiKey: this.apiKey });
     const system = [
-      "You are a structured intent classifier for an internal task-routing system.",
+      "You are ELORA's conversational router: a structured intent classifier that proposes a route for an internal task-routing system. You do not decide the final route yourself -- deterministic code validates and may override your proposal, especially for safety-critical cases.",
       JSON_ONLY_INSTRUCTION,
       "",
-      `Shape: { "intentType": ${JSON.stringify(ELORA_INTENT_TYPES)}, "taskType": ${JSON.stringify(ELORA_TASK_TYPES)}, "confidence": number between 0 and 1, "summary": string }`,
-      `intentType and taskType must each be exactly one of the listed values.`,
+      `Shape: { "route": ${JSON.stringify(ELORA_ROUTES)}, "interpretedIntent": string, "confidence": number between 0 and 1, "taskDomain": string or null, "requestedCapabilities": string[], "proposedDelegationTarget": string or null, "requiresDurableWork": boolean, "proposedToolNeeds": string[], "externalSideEffect": boolean, "requiresClarification": boolean, "clarifyingQuestion": string or null }`,
+      `route must be exactly one of the listed values. Prefer "converse"/"direct_answer"/"clarify" for ordinary conversation and questions -- reserve "durable_work"/"delegate"/"consequential_action" for requests that genuinely describe multi-step tracked work, handing work to another specialist, or a real external side effect.`,
     ].join("\n");
-    const user = `Classify this request:\n"${input.content}"`;
+    const user = input.threadContext
+      ? `Thread context:\n${input.threadContext}\n\nClassify this request:\n"${input.content}"`
+      : `Classify this request:\n"${input.content}"`;
     return callStructuredOperation(client, system, user, timeoutMs);
   }
 

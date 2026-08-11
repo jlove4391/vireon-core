@@ -15,10 +15,14 @@ export { IntentInterpretationInputSchema, IntentInterpretationOutputSchema };
 export type { IntentInterpretationInput, IntentInterpretationOutput };
 
 /**
- * PR 2: proves the mechanism only -- no live caller wires this into
- * ingestUserMessage.ts or anywhere else. parseIntent.ts (src/elora/parseIntent.ts)
- * remains the sole, unmodified, deterministic intent parser for every live
- * request; this is a second, still-uncalled path, not a replacement.
+ * PR 2 / ADR 0008 Realignment A: the schema now targets the route
+ * taxonomy (src/elora/types.ts's ELORA_ROUTES) instead of the retired
+ * ELORA_INTENT_TYPES/ELORA_TASK_TYPES vocabulary. Still no live caller in
+ * this PR -- resolveEloraRoute.ts (the model-proposes/code-decides routing
+ * policy, ingestUserMessage.ts's future caller) is a separate, later slice.
+ * parseIntent.ts is repurposed in this same PR into the degraded-mode
+ * fallback classifier (ADR 0008 §3), used only when this operation is
+ * unavailable or fails -- not the primary classifier it used to be.
  */
 export async function runIntentInterpretation(
   input: IntentInterpretationInput,

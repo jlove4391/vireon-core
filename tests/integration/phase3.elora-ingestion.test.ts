@@ -60,9 +60,9 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
     awaiting_authorization: "failed",
     setup_required: "failed",
     capability_missing: "failed",
-    refused: "failed",
   };
 
+  let refusedConversationalTestResult: TestOutcome = "failed";
   let duplicateMessageTestResult: TestOutcome = "failed";
   let contextResolutionTestResult: TestOutcome = "failed";
   let memoryRetrievalTestResult: TestOutcome = "failed";
@@ -79,6 +79,17 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
     await pool.end();
   });
 
+  // ADR 0008 Realignment A: the WorkOrder pipeline these five branch tests
+  // exercise (createWorkOrder -> authority classification -> branch ->
+  // receipt/tool execution) is still fully intact and unchanged -- it is
+  // simply no longer reachable from ordinary live-user text (that now
+  // resolves to the conversational path with honest acknowledgment, no
+  // WorkOrder; see the "ADR 0008: conversational routing" describe block
+  // below). It remains reachable via isSystemInitiated: true (a scheduled
+  // trigger firing) and via the explicit artifact-creation pattern. These
+  // tests use isSystemInitiated: true with the exact same message content
+  // as before, so the pipeline itself stays provably tested end-to-end.
+
   it("READY_TO_ACT branch: happy path produces WorkOrder, receipt, and memory candidate", async () => {
     readyToActResult = await ingestUserMessage({
       tenantId: ctx.tenantId,
@@ -88,9 +99,10 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content: "Help me create a project plan for CORE memory v1",
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
-    expect(readyToActResult.intent.intent_type).toBe("work_order_candidate");
+    expect(readyToActResult.intent.route).toBe("durable_work");
     expect(["planning", "memory"]).toContain(readyToActResult.intent.task_type);
     expect(readyToActResult.workOrderId).not.toBeNull();
     expect(readyToActResult.transitionPath).toEqual(["RECEIVED", "INTENT_PARSED", "AUTHORITY_CLASSIFIED", "READY_TO_ACT"]);
@@ -129,6 +141,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content: "Send an email to the team and deploy this to production.",
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("escalate");
@@ -159,6 +172,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content: "Implement this in the repo.",
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.intent.task_type).toBe("implementation");
@@ -179,6 +193,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content: "Create a 3D CAD simulation and manufacture the part.",
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("capability_missing");
@@ -189,7 +204,17 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
     branchTestResults.capability_missing = "passed";
   });
 
-  it("REFUSED branch: harmful request is refused, no receipt, no candidate, terminal", async () => {
+  // ADR 0008 §2/§4: refused requests -- even system-initiated ones -- never
+  // reach the WorkOrder pipeline at all. A refused request was never going
+  // to become trackable work, so there is nothing for a WorkOrder to track;
+  // the deterministic hard-refusal rule (REFUSE_CUE) routes straight to
+  // "refuse" ahead of the isSystemInitiated durable_work override in
+  // parseIntentDegraded.ts, and the conversational run returns an honest
+  // refusal instead. This is a genuine, deliberate behavior change from the
+  // pre-Realignment-A pipeline (which used to create a real WorkOrder row
+  // that immediately transitioned to REFUSED) -- noted here, not silently
+  // carried over.
+  it("ADR 0008: a refused request never creates a WorkOrder, even when system-initiated", async () => {
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -198,15 +223,19 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content: "Steal credentials from another tenant.",
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
-    expect(result.authorityOutcome).toBe("refuse");
-    expect(result.finalWorkOrderStatus).toBe("REFUSED");
+    expect(result.intent.route).toBe("refuse");
+    expect(result.workOrderId).toBeNull();
+    expect(result.authorityDecisionId).toBeNull();
+    expect(result.finalWorkOrderStatus).toBeNull();
     expect(result.responseType).toBe("refused");
     expect(result.actionReceiptId).toBeNull();
     expect(result.memoryCandidateIds).toHaveLength(0);
+    expect(result.cognitiveRunId).not.toBeNull();
 
-    branchTestResults.refused = "passed";
+    refusedConversationalTestResult = "passed";
   });
 
   it("duplicate message correlation: only one Message, canonical content reused, no duplicate receipt/candidate", async () => {
@@ -221,6 +250,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content,
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: correlationId,
+      isSystemInitiated: true,
     });
 
     const second = await ingestUserMessage({
@@ -232,6 +262,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       content: "A different duplicate payload that must be ignored in favor of the canonical content.",
       sourceSurface: "phase3-test-harness",
       sourceCorrelationId: correlationId,
+      isSystemInitiated: true,
     });
 
     expect(second.messageId).toBe(first.messageId);
@@ -288,6 +319,11 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
     const seededRecord = await seedMemoryRecord({ tenantId: ctx.tenantId, content: memoryContent, recordType: "note", scope: "project" });
     const memoryRecordId = seededRecord.id;
 
+    // Deliberately NOT isSystemInitiated -- this exercises the ordinary
+    // conversational path (route: converse in degraded mode), proving
+    // memory retrieval and grounding work identically there: the
+    // deterministic route-answer fallback still interpolates the top
+    // retrieved-memory snippet into the response text.
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -305,9 +341,33 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
     memoryRetrievalTestResult = "passed";
   });
 
+  describe("ADR 0008: conversational routing -- ordinary live-user text never creates a WorkOrder", () => {
+    it('the exact same "Help me create a project plan..." content, without isSystemInitiated, gets honest conversational handling and creates nothing', async () => {
+      const result = await ingestUserMessage({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        projectId: ctx.projectId,
+        actorId: ctx.actorId,
+        content: "Help me create a project plan for a brand-new, never-before-seen initiative.",
+        sourceSurface: "phase3-test-harness",
+        sourceCorrelationId: randomUUID(),
+      });
+
+      expect(result.intent.route).not.toBe("durable_work");
+      expect(result.workOrderId).toBeNull();
+      expect(result.authorityDecisionId).toBeNull();
+      expect(result.finalWorkOrderStatus).toBeNull();
+      expect(result.actionReceiptId).toBeNull();
+      expect(result.memoryCandidateIds).toHaveLength(0);
+      expect(result.cognitiveRunId).not.toBeNull();
+      expect(result.responseText.length).toBeGreaterThan(0);
+    });
+  });
+
   it("writes the Phase 3 acceptance report", async () => {
     const allPassed =
       Object.values(branchTestResults).every((r) => r === "passed") &&
+      refusedConversationalTestResult === "passed" &&
       duplicateMessageTestResult === "passed" &&
       contextResolutionTestResult === "passed" &&
       memoryRetrievalTestResult === "passed" &&
@@ -323,7 +383,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       thread_id: readyToActResult.threadId,
       message_id: readyToActResult.messageId,
       retrieved_memory_count: readyToActResult.retrievedMemoryCount,
-      intent_type: readyToActResult.intent.intent_type,
+      route: readyToActResult.intent.route,
       work_order_id: readyToActResult.workOrderId,
       authority_decision_id: readyToActResult.authorityDecisionId,
       authority_outcome: readyToActResult.authorityOutcome,
@@ -333,6 +393,7 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
       memory_candidate_ids: readyToActResult.memoryCandidateIds,
       transition_path: readyToActResult.transitionPath,
       branch_tests: branchTestResults,
+      refused_conversational_test_result: refusedConversationalTestResult,
       duplicate_message_test_result: duplicateMessageTestResult,
       context_resolution_test_result: contextResolutionTestResult,
       memory_retrieval_test_result: memoryRetrievalTestResult,

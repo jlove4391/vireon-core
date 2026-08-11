@@ -265,7 +265,21 @@ export function runProviderConformanceSuite(label: string, getCtx: () => SeededC
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).not.toHaveProperty("extraHackerField");
-        expect(Object.keys(result.value as object).sort()).toEqual(["confidence", "intentType", "summary", "taskType"]);
+        expect(Object.keys(result.value as object).sort()).toEqual(
+          [
+            "clarifyingQuestion",
+            "confidence",
+            "externalSideEffect",
+            "interpretedIntent",
+            "proposedDelegationTarget",
+            "proposedToolNeeds",
+            "requestedCapabilities",
+            "requiresClarification",
+            "requiresDurableWork",
+            "route",
+            "taskDomain",
+          ].sort(),
+        );
       }
     });
   });

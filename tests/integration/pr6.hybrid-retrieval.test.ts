@@ -913,7 +913,7 @@ describe("PR 6: hybrid memory retrieval acceptance", () => {
         actorId: ctx.actorId,
         content: "What's the weather like today?",
       });
-      expect(result.intent.intent_type).toBe("informational");
+      expect(result.intent.route).toBe("converse");
       expect(await countModelInvocationsByOperation(ctx.tenantId, "embedding")).toBe(0);
     });
 
@@ -965,7 +965,7 @@ describe("PR 6: hybrid memory retrieval acceptance", () => {
         content: "What are the office relocation plans?",
       });
 
-      expect(result.intent.intent_type).toBe("informational");
+      expect(result.intent.route).toBe("converse");
       expect(await countModelInvocationsByOperation(ctx.tenantId, "embedding")).toBeGreaterThan(0);
     });
   });

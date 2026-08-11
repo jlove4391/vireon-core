@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ELORA_PERSONA, type PersonaConfig } from "@vireon/persona-config";
-import { runInformationalCognitiveRun } from "../cognition/runInformationalCognitiveRun.js";
+import { runConversationalCognitiveRun } from "../cognition/runConversationalCognitiveRun.js";
 import { withTenantTransaction } from "../db/withTenantTransaction.js";
 import { createWorkOrder, type CreateWorkOrderResult } from "../state/createWorkOrder.js";
 import { transitionWorkOrder, type TransitionWorkOrderInput } from "../state/transitionWorkOrder.js";
@@ -14,6 +14,7 @@ import { buildIdempotencyKey } from "../shared/ids.js";
 import { isToolRegistered } from "../tools/registry.js";
 import { registerCoreTools } from "../tools/index.js";
 import { setCorrelationAttributes, withSpan } from "../telemetry/correlation.js";
+import { assembleThreadContext } from "./assembleThreadContext.js";
 import { dispatchTool } from "./dispatchTool.js";
 import { EloraPersonaActorNotFoundError } from "./errors.js";
 import { generateEloraResponse } from "./generateEloraResponse.js";
@@ -21,15 +22,21 @@ import { createConfiguredEmbeddingProvider } from "./llm/embeddingProvider.js";
 import { retrieveHybridMemory } from "./memory/retrieveHybridMemory.js";
 import { readMemoryRetrievalStrategyFromEnv } from "./memory/retrievalStrategy.js";
 import { normalizeIngress } from "./normalizeIngress.js";
-import { persistMessage } from "./persistMessage.js";
-import { parseIntent } from "./parseIntent.js";
+import { persistAssistantReply, persistMessage } from "./persistMessage.js";
 import { proposeMemoryCandidates } from "./proposeMemoryCandidates.js";
 import { resolveAuthorityWithHierarchy } from "./resolveAuthorityWithHierarchy.js";
 import { resolveContext } from "./resolveContext.js";
+import { resolveEloraRoute } from "./resolveEloraRoute.js";
 import { retrieveRelevantMemory, type RetrievedMemoryRecord } from "./retrieveRelevantMemory.js";
 import { runToolExecution } from "./runToolExecution.js";
 import { synthesizeIngestionResponse } from "./synthesizeIngestionResponse.js";
-import { AUTHORITY_OUTCOME_TO_REASON_CODE, type EloraIngestionResult, type EloraIngressInput, type EloraStructuredIntent } from "./types.js";
+import {
+  AUTHORITY_OUTCOME_TO_REASON_CODE,
+  type EloraIngestionResult,
+  type EloraIngressInput,
+  type EloraResponseType,
+  type EloraStructuredIntent,
+} from "./types.js";
 import { writeBlockedReceipt } from "./writeBlockedReceipt.js";
 import { writeEloraReceipt } from "./writeEloraReceipt.js";
 
@@ -75,6 +82,32 @@ export async function resolvePersonaActorId(input: { tenantId: string; persona: 
     }
     return row.id;
   });
+}
+
+/**
+ * ADR 0008 Realignment A: the conversational path's responseType, keyed off
+ * the resolved route and how the answer was actually produced -- never off
+ * finalStatus alone (PR #41's own lesson: a DETERMINISTIC_FALLBACK answer
+ * is a genuine response regardless of the run's bookkeeping status).
+ * UNSUBSTANTIATED (no real answer at all, only the absolute placeholder)
+ * always wins as the honest, conservative label, overriding whatever route
+ * was resolved. Reuses the existing EloraResponseType vocabulary
+ * unchanged -- no new response types invented for the new routes.
+ */
+function computeConversationalResponseType(intent: EloraStructuredIntent, responseSource: "MODEL" | "DETERMINISTIC_FALLBACK" | "UNSUBSTANTIATED"): EloraResponseType {
+  if (responseSource === "UNSUBSTANTIATED") return "clarification_required";
+  switch (intent.route) {
+    case "refuse":
+      return "refused";
+    case "setup_required":
+      return "setup_required";
+    case "capability_missing":
+      return "capability_missing";
+    case "clarify":
+      return "clarification_required";
+    default:
+      return "direct_answer";
+  }
 }
 
 // Static, in-process tool registry (§5) -- registered once at module load,
@@ -326,26 +359,58 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
       },
     );
 
-    const intent = parseIntent(persisted.content);
+    // ADR 0008 Realignment A: route resolution replaces parseIntent.ts's old
+    // unconditional binary classification. resolveEloraRoute.ts internally
+    // checks the explicit local-Markdown-artifact pattern first (bypassing
+    // the model entirely, per §3/§5's own "structurally recognizable
+    // syntax" exception) before ever calling the model or falling back to
+    // degraded mode.
+    const routeResult = await resolveEloraRoute({
+      tenantId: context.tenantId,
+      content: persisted.content,
+      invocationKey: buildIdempotencyKey([context.tenantId, persisted.messageId, "intent_interpretation", "1"]),
+      isSystemInitiated: normalized.isSystemInitiated,
+    });
+    const intent = routeResult.intent;
 
-    if (intent.intent_type !== "work_order_candidate") {
-      // PR 4: the informational branch runs through a real, durable
-      // CognitiveRun (runInformationalCognitiveRun.ts) instead of returning
-      // the fixed clarification placeholder unconditionally. No WorkOrder,
-      // authority decision, receipt, or memory candidate is created on this
-      // path -- see that module's own doc comment for the full contract.
-      const informationalResult = await withSpan(
+    // ADR 0008 §4/§5: two deterministic bypasses keep reusing the existing
+    // WorkOrder/tool pipeline completely unchanged, model available or not:
+    // (1) the explicit artifact-creation pattern (task_type set by
+    // resolveEloraRoute.ts's own bypass check above), and (2) a
+    // system-trigger-initiated durable_work firing -- a scheduled trigger is
+    // pre-authorized background work (createScheduledTrigger.ts already runs
+    // its own authority resolution at creation time), fundamentally
+    // different in kind from an ad-hoc conversational message even when its
+    // synthetic content reads the same way. Every other route -- including
+    // an ordinary user's durable_work/delegate/consequential_action request --
+    // gets honest acknowledgment through the conversational path, never a
+    // WorkOrder (that gate reopens in Realignment B).
+    const isArtifactCreation = intent.task_type === "artifact_creation" && Boolean(intent.artifactRequest);
+    const isSystemTriggerDurableWork = normalized.isSystemInitiated && intent.route === "durable_work";
+    const usesWorkOrderPipeline = isArtifactCreation || isSystemTriggerDurableWork;
+
+    if (!usesWorkOrderPipeline) {
+      const threadContext = await withSpan(
         TRACER_NAME,
-        "elora.informational_cognitive_run",
+        "elora.assemble_thread_context",
+        { "vireon.tenant.id": context.tenantId, "vireon.thread.id": persisted.threadId },
+        () => assembleThreadContext({ tenantId: context.tenantId, threadId: persisted.threadId, retrievedMemory }),
+      );
+
+      const conversationalResult = await withSpan(
+        TRACER_NAME,
+        "elora.conversational_cognitive_run",
         { "vireon.tenant.id": context.tenantId, "vireon.thread.id": persisted.threadId, "vireon.message.id": persisted.messageId },
         async (span) => {
-          const result = await runInformationalCognitiveRun({
+          const result = await runConversationalCognitiveRun({
             tenantId: context.tenantId,
             threadId: persisted.threadId,
             messageId: persisted.messageId,
             initiatedByActorId: context.actorId,
             userMessageContent: persisted.content,
             retrievedMemory,
+            intent,
+            threadContext,
           });
           setCorrelationAttributes(span, { cognitiveRunId: result.cognitiveRunId });
           if (result.modelInvocationId) {
@@ -355,7 +420,19 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
           return result;
         },
       );
-      setCorrelationAttributes(rootSpan, { cognitiveRunId: informationalResult.cognitiveRunId });
+      setCorrelationAttributes(rootSpan, { cognitiveRunId: conversationalResult.cognitiveRunId });
+
+      // ADR 0008 §6: persist ELORA's own reply so future turns' thread
+      // context can reference it ("Why did you recommend Postgres?").
+      // Best-effort in spirit but not wrapped in a try/catch that silently
+      // swallows failure -- a persistence error here is a genuine,
+      // unexpected failure worth surfacing, not a degraded-mode condition.
+      await persistAssistantReply({
+        tenantId: context.tenantId,
+        threadId: persisted.threadId,
+        actorId: context.actorId,
+        content: conversationalResult.responseText,
+      });
 
       return {
         tenantId: context.tenantId,
@@ -370,24 +447,15 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
         authorityOutcome: null,
         finalWorkOrderStatus: null,
         transitionPath: [],
-        // ADR 0008 §7: keyed off responseSource, not finalStatus -- a
-        // MODEL or DETERMINISTIC_FALLBACK answer is a genuine direct
-        // answer regardless of whether the run's bookkeeping status is
-        // COMPLETED or FAILED (a provider-selection failure legitimately
-        // produces a real DETERMINISTIC_FALLBACK answer while the
-        // cognitive run itself still correctly ends FAILED, since no
-        // model_invocations row is possible to substantiate COMPLETED).
-        // Only UNSUBSTANTIATED (the absolute placeholder, no real answer
-        // produced at all) is a genuine clarification-required response.
-        responseType: informationalResult.responseSource === "UNSUBSTANTIATED" ? "clarification_required" : "direct_answer",
-        responseText: informationalResult.responseText,
+        responseType: computeConversationalResponseType(intent, conversationalResult.responseSource),
+        responseText: conversationalResult.responseText,
         actionReceiptId: null,
         blockedReceiptId: null,
         toolInvocationId: null,
         artifactId: null,
         memoryCandidateIds: [],
-        cognitiveRunId: informationalResult.cognitiveRunId,
-        modelInvocationId: informationalResult.modelInvocationId,
+        cognitiveRunId: conversationalResult.cognitiveRunId,
+        modelInvocationId: conversationalResult.modelInvocationId,
       };
     }
 
