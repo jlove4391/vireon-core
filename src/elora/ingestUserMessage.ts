@@ -39,6 +39,7 @@ import {
 } from "./types.js";
 import { writeBlockedReceipt } from "./writeBlockedReceipt.js";
 import { writeEloraReceipt } from "./writeEloraReceipt.js";
+import { writeRefusalRecord } from "./writeRefusalRecord.js";
 
 const TRACER_NAME = "elora.ingestion";
 
@@ -434,6 +435,37 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
         content: conversationalResult.responseText,
       });
 
+      // ADR 0008 Realignment A follow-up: refuse still gets a real, governed
+      // audit trail -- an AuthorityDecision (outcome: refuse) and a blocked
+      // ActionReceipt -- written directly, with no WorkOrder involved at
+      // all. Every other conversational route (converse/direct_answer/
+      // clarify/delegate/durable_work/consequential_action/etc.) stays
+      // exactly as above: no AuthorityDecision, no receipt, honest reply
+      // only. See writeRefusalRecord.ts's own doc comment for why refuse is
+      // the one exception.
+      let refusalRecord: { authorityDecisionId: string; blockedReceiptId: string } | null = null;
+      if (intent.route === "refuse") {
+        refusalRecord = await withSpan(
+          TRACER_NAME,
+          "elora.write_refusal_record",
+          { "vireon.tenant.id": context.tenantId, "vireon.message.id": persisted.messageId },
+          async (span) => {
+            const result = await writeRefusalRecord({
+              tenantId: context.tenantId,
+              messageId: persisted.messageId,
+              actorId: context.actorId,
+              content: persisted.content,
+              responseText: conversationalResult.responseText,
+            });
+            setCorrelationAttributes(span, {
+              authorityDecisionId: result.authorityDecision.id,
+              receiptId: result.actionReceipt.id,
+            });
+            return { authorityDecisionId: result.authorityDecision.id, blockedReceiptId: result.actionReceipt.id };
+          },
+        );
+      }
+
       return {
         tenantId: context.tenantId,
         threadId: persisted.threadId,
@@ -443,14 +475,14 @@ export async function ingestUserMessage(input: EloraIngressInput): Promise<Elora
         retrievedMemoryCount: retrievedMemory.length,
         retrievedMemoryIds: retrievedMemory.map((record) => record.id),
         workOrderId: null,
-        authorityDecisionId: null,
-        authorityOutcome: null,
+        authorityDecisionId: refusalRecord?.authorityDecisionId ?? null,
+        authorityOutcome: refusalRecord ? "refuse" : null,
         finalWorkOrderStatus: null,
         transitionPath: [],
         responseType: computeConversationalResponseType(intent, conversationalResult.responseSource),
         responseText: conversationalResult.responseText,
         actionReceiptId: null,
-        blockedReceiptId: null,
+        blockedReceiptId: refusalRecord?.blockedReceiptId ?? null,
         toolInvocationId: null,
         artifactId: null,
         memoryCandidateIds: [],

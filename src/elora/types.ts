@@ -182,15 +182,29 @@ export interface EloraIngestionResult {
   retrievedMemoryCount: number;
   retrievedMemoryIds: string[];
   workOrderId: string | null;
+  /**
+   * ADR 0008 Realignment A follow-up: also set on a conversational refuse
+   * (route === "refuse", no WorkOrder involved) -- writeRefusalRecord.ts
+   * writes a real AuthorityDecision directly. Otherwise unchanged: set on
+   * the four WorkOrder-pipeline blocked branches (Phase 4 §4.2/§7).
+   */
   authorityDecisionId: string | null;
+  /** Same refuse exception as authorityDecisionId above -- "refuse" here never implies a WorkOrder existed. */
   authorityOutcome: AuthorityOutcome | null;
+  /** Unlike authorityDecisionId/blockedReceiptId, this stays null on a conversational refuse -- there is no WorkOrder to report a status for, refused or otherwise. */
   finalWorkOrderStatus: WorkOrderStatus | null;
   transitionPath: WorkOrderStatus[];
   responseType: EloraResponseType;
   responseText: string;
   /** elora_ingestion_completed receipt id -- only set on the non-execution READY_TO_ACT happy path (Phase 3, unchanged). */
   actionReceiptId: string | null;
-  /** elora_request_blocked receipt id -- only set on the four blocked branches (Phase 4 §4.2/§7). */
+  /**
+   * elora_request_blocked receipt id -- set on the four WorkOrder-pipeline
+   * blocked branches (Phase 4 §4.2/§7), AND on a conversational refuse
+   * (ADR 0008 Realignment A follow-up: writeRefusalRecord.ts writes this
+   * directly, with a null payload.work_order_id -- see that receipt type's
+   * schema comment in actionReceipt.ts).
+   */
   blockedReceiptId: string | null;
   /** Phase 5 §8: set only when a registered tool was actually invoked through the gateway. */
   toolInvocationId: string | null;

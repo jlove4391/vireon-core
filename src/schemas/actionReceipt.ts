@@ -145,10 +145,17 @@ const eloraIngestionCompletedReceiptSchema = receiptBaseSchema.extend({
 // (action_receipts.authority_decision_id). Written directly by
 // src/elora/writeBlockedReceipt.ts, same direct-call pattern as
 // writeEloraReceipt.ts.
+//
+// ADR 0008 Realignment A follow-up: work_order_id is nullable here (loosened
+// from required, not a DB schema change -- action_receipts.work_order_id was
+// already nullable at the database level) so src/elora/writeRefusalRecord.ts
+// can reuse this exact receipt type for a conversational refuse, which has
+// no WorkOrder at all. Every pre-existing WorkOrder-pipeline blocked branch
+// (written by writeBlockedReceipt.ts) still always supplies a real one.
 const eloraRequestBlockedReceiptSchema = receiptBaseSchema.extend({
   receipt_type: z.literal("elora_request_blocked"),
   payload: z.object({
-    work_order_id: uuidSchema,
+    work_order_id: uuidSchema.nullable(),
     response_summary: z.string().min(1),
   }),
 });

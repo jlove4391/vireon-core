@@ -226,14 +226,22 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
   // at all, even when isSystemInitiated -- REFUSE_CUE routes straight to
   // "refuse" ahead of the isSystemInitiated durable_work override
   // (parseIntentDegraded.ts), and the conversational run returns an honest
-  // refusal instead. No WorkOrder, no receipt -- a deliberate behavior
-  // change from the pre-Realignment-A pipeline (which used to write a real
-  // elora_request_blocked receipt for this branch), not silently carried
-  // over. Consequently this branch is no longer represented in
-  // branchWorkOrderIds/branchReceiptIds -- the "no inferred tool usage" and
-  // "receipt completeness" tests below correctly iterate over the
-  // remaining four branches only.
-  it("ADR 0008: refuse never creates a WorkOrder or receipt, even system-initiated -- an honest conversational refusal instead", async () => {
+  // refusal instead. A deliberate behavior change from the pre-Realignment-A
+  // pipeline (which used to write a WorkOrder-owned elora_request_blocked
+  // receipt for this branch via the WorkOrder pipeline), not silently
+  // carried over.
+  //
+  // PR #42 follow-up: refuse still gets a real, governed audit trail --
+  // an AuthorityDecision (outcome: refuse) and a blocked ActionReceipt --
+  // written directly by writeRefusalRecord.ts, with no WorkOrder at all
+  // (work_order_id is nullable on both tables specifically for this).
+  // This branch stays absent from branchWorkOrderIds/branchReceiptIds
+  // (there is no WorkOrder to key those maps by) -- the "no inferred tool
+  // usage" and "receipt completeness" tests below correctly keep iterating
+  // over the remaining four WorkOrder-pipeline branches only. The rows
+  // written here are verified directly against the database instead, since
+  // getInspectableReceipt() is keyed strictly by workOrderId.
+  it("ADR 0008: refuse never creates a WorkOrder, even system-initiated -- but still writes a real, governed AuthorityDecision + blocked ActionReceipt directly", async () => {
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -247,11 +255,32 @@ describe("Phase 4: Receipts and Authority-v2 acceptance", () => {
 
     expect(result.intent.route).toBe("refuse");
     expect(result.workOrderId).toBeNull();
-    expect(result.authorityOutcome).toBeNull();
+    expect(result.authorityOutcome).toBe("refuse");
+    expect(result.authorityDecisionId).not.toBeNull();
     expect(result.finalWorkOrderStatus).toBeNull();
-    expect(result.blockedReceiptId).toBeNull();
+    expect(result.blockedReceiptId).not.toBeNull();
     expect(result.responseType).toBe("refused");
     expect(result.cognitiveRunId).not.toBeNull();
+
+    const { decisionRow, receiptRow } = await withTenantTransaction(ctx.tenantId, async (client) => {
+      const decision = await client.query(
+        "SELECT outcome, work_order_id, requires_human_gatekeeper, reason FROM authority_decisions WHERE id = $1 AND tenant_id = $2",
+        [result.authorityDecisionId, ctx.tenantId],
+      );
+      const receipt = await client.query(
+        "SELECT receipt_type, work_order_id, authority_decision_id, payload FROM action_receipts WHERE id = $1 AND tenant_id = $2",
+        [result.blockedReceiptId, ctx.tenantId],
+      );
+      return { decisionRow: decision.rows[0], receiptRow: receipt.rows[0] };
+    });
+
+    expect(decisionRow.outcome).toBe("refuse");
+    expect(decisionRow.work_order_id).toBeNull();
+    expect(decisionRow.requires_human_gatekeeper).toBe(true);
+
+    expect(receiptRow.receipt_type).toBe("elora_request_blocked");
+    expect(receiptRow.work_order_id).toBeNull();
+    expect(receiptRow.authority_decision_id).toBe(result.authorityDecisionId);
 
     branchTestResults.refuse = "passed";
   });

@@ -1,10 +1,10 @@
 {
   "status": "passed",
   "phase": "phase5_tool_registry_v1",
-  "timestamp": "2026-08-11T02:55:05.245Z",
-  "tenant_id": "0c37b362-fc67-4b3e-a4fe-9b4708f39100",
-  "end_to_end_work_order_id": "e3bc5e20-8acc-41c8-b027-b8f4e862593b",
-  "end_to_end_artifact_id": "47dbf7fe-dda2-42ec-8312-5aec38151f80",
+  "timestamp": "2026-08-11T11:43:02.341Z",
+  "tenant_id": "8997b7ab-71f8-4037-8e66-ebbe9b149d66",
+  "end_to_end_work_order_id": "0c1efe4a-b96b-48bc-bc29-bf973d63fca5",
+  "end_to_end_artifact_id": "c4ea694e-d9a1-4410-87d9-a4f8b200df67",
   "results": {
     "registry_all_three": "passed",
     "registry_unique_names": "passed",

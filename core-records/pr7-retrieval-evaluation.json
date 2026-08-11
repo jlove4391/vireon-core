@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-08-11T02:55:07.737Z",
+  "generatedAt": "2026-08-11T11:43:05.447Z",
   "reports": [
     {
       "query": "What is the vendor renewal timeline for Acme Corp?",
       "expectedIds": [
-        "0f39db80-42ca-437c-b45c-c5f4da8441b1",
-        "7db05e32-b7e6-4325-aebb-e27361af7549",
-        "b990056f-ff47-420c-b1d9-edbee9c0a752",
-        "e24482a4-27ca-4c67-9b6d-ff045bafafac",
-        "3b2e59e3-c2c4-4244-9f4e-c4dc403f273d"
+        "68f2cb40-56d2-45b7-a1e3-717e3bf27c70",
+        "414a1e75-a19c-4ad8-93be-85051beec7dd",
+        "c072fa3c-03fe-4ae8-b534-dddce3ed1a10",
+        "3dc19328-edc3-423d-ac89-b375c314c2b0",
+        "ff0a99b6-220c-4872-9434-b40aa91aa8a9"
       ],
       "retrievedIds": [
-        "0f39db80-42ca-437c-b45c-c5f4da8441b1",
-        "3b2e59e3-c2c4-4244-9f4e-c4dc403f273d",
-        "7db05e32-b7e6-4325-aebb-e27361af7549",
-        "e24482a4-27ca-4c67-9b6d-ff045bafafac",
-        "b990056f-ff47-420c-b1d9-edbee9c0a752"
+        "68f2cb40-56d2-45b7-a1e3-717e3bf27c70",
+        "ff0a99b6-220c-4872-9434-b40aa91aa8a9",
+        "414a1e75-a19c-4ad8-93be-85051beec7dd",
+        "3dc19328-edc3-423d-ac89-b375c314c2b0",
+        "c072fa3c-03fe-4ae8-b534-dddce3ed1a10"
       ],
       "recallAt5": 1,
       "precisionAt5": 1
@@ -23,15 +23,15 @@
     {
       "query": "What are the office relocation plans?",
       "expectedIds": [
-        "be5ebe64-d667-4e76-a447-8d399afa12b4",
-        "3b2e59e3-c2c4-4244-9f4e-c4dc403f273d"
+        "dd1a417c-a812-4807-b763-89e8309438ab",
+        "ff0a99b6-220c-4872-9434-b40aa91aa8a9"
       ],
       "retrievedIds": [
-        "be5ebe64-d667-4e76-a447-8d399afa12b4",
-        "3b2e59e3-c2c4-4244-9f4e-c4dc403f273d",
-        "c7ad17bb-6f97-43d7-a483-820f95656d65",
-        "d24cb449-07be-4ea7-a13d-e51152f4697c",
-        "f867647b-d0d2-4e46-bb0b-3878b0f9de0a"
+        "dd1a417c-a812-4807-b763-89e8309438ab",
+        "ff0a99b6-220c-4872-9434-b40aa91aa8a9",
+        "677111cb-abcc-4474-b23e-fd3fa5053f58",
+        "b9b37b77-9158-499c-85f1-5ebba967b503",
+        "efcbe3fb-adde-47e3-becd-829cfaa1c39a"
       ],
       "recallAt5": 1,
       "precisionAt5": 0.4
@@ -39,10 +39,10 @@
     {
       "query": "database migration",
       "expectedIds": [
-        "c7ad17bb-6f97-43d7-a483-820f95656d65"
+        "677111cb-abcc-4474-b23e-fd3fa5053f58"
       ],
       "retrievedIds": [
-        "c7ad17bb-6f97-43d7-a483-820f95656d65"
+        "677111cb-abcc-4474-b23e-fd3fa5053f58"
       ],
       "recallAt5": 1,
       "precisionAt5": 0.2
@@ -50,10 +50,10 @@
     {
       "query": "database migration",
       "expectedIds": [
-        "c7ad17bb-6f97-43d7-a483-820f95656d65"
+        "677111cb-abcc-4474-b23e-fd3fa5053f58"
       ],
       "retrievedIds": [
-        "c7ad17bb-6f97-43d7-a483-820f95656d65"
+        "677111cb-abcc-4474-b23e-fd3fa5053f58"
       ],
       "recallAt5": 1,
       "precisionAt5": 0.2
@@ -61,14 +61,14 @@
     {
       "query": "annual conference schedule",
       "expectedIds": [
-        "76017a4b-26d4-4d32-ade0-0ce6ae7290c2"
+        "5efb4511-65d6-4ad5-9298-ddc200b91c97"
       ],
       "retrievedIds": [
-        "76017a4b-26d4-4d32-ade0-0ce6ae7290c2",
-        "099c62a8-27d7-42c0-93c8-b1066f422c9d",
-        "d24cb449-07be-4ea7-a13d-e51152f4697c",
-        "c7ad17bb-6f97-43d7-a483-820f95656d65",
-        "f867647b-d0d2-4e46-bb0b-3878b0f9de0a"
+        "5efb4511-65d6-4ad5-9298-ddc200b91c97",
+        "e4b52076-faec-4b33-8aff-87f98853320f",
+        "b9b37b77-9158-499c-85f1-5ebba967b503",
+        "677111cb-abcc-4474-b23e-fd3fa5053f58",
+        "efcbe3fb-adde-47e3-becd-829cfaa1c39a"
       ],
       "recallAt5": 1,
       "precisionAt5": 0.2

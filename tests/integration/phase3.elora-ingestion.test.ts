@@ -214,7 +214,14 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
   // pre-Realignment-A pipeline (which used to create a real WorkOrder row
   // that immediately transitioned to REFUSED) -- noted here, not silently
   // carried over.
-  it("ADR 0008: a refused request never creates a WorkOrder, even when system-initiated", async () => {
+  //
+  // PR #42 follow-up: refuse still gets a real, governed audit trail --
+  // AuthorityDecision (outcome: refuse) + a blocked ActionReceipt --
+  // written directly by writeRefusalRecord.ts, with no WorkOrder involved
+  // at all (work_order_id is nullable on both tables specifically for
+  // this). Only workOrderId/finalWorkOrderStatus stay null; there was
+  // never a WorkOrder to report a status for.
+  it("ADR 0008: a refused request never creates a WorkOrder, even when system-initiated -- but still writes a real AuthorityDecision + blocked receipt", async () => {
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -228,10 +235,12 @@ describe("Phase 3: ELORA v1 ingestion runtime acceptance", () => {
 
     expect(result.intent.route).toBe("refuse");
     expect(result.workOrderId).toBeNull();
-    expect(result.authorityDecisionId).toBeNull();
+    expect(result.authorityDecisionId).not.toBeNull();
+    expect(result.authorityOutcome).toBe("refuse");
     expect(result.finalWorkOrderStatus).toBeNull();
     expect(result.responseType).toBe("refused");
     expect(result.actionReceiptId).toBeNull();
+    expect(result.blockedReceiptId).not.toBeNull();
     expect(result.memoryCandidateIds).toHaveLength(0);
     expect(result.cognitiveRunId).not.toBeNull();
 

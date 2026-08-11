@@ -110,6 +110,16 @@ function describeRouteForModel(intent: EloraStructuredIntent): { taskType: strin
         taskType: "conversational",
         reason: "This request describes durable, multi-step work. Recognize that plainly, explain that tracked task creation isn't wired up yet, and that this has been noted -- never claim a WorkOrder was created.",
       };
+    // Known, temporary gap (explicitly called out, not quietly accepted as
+    // "handled"): unlike refuse, consequential_action gets honest
+    // acknowledgment only here -- no AuthorityDecision/ActionReceipt is
+    // written for it, on purpose, for now. Realignment A ships zero new
+    // tools (ADR 0008 §5 scope), so there is no registered capability this
+    // route could actually invoke yet; an AuthorityDecision/ActionReceipt
+    // for an action the runtime has no way to execute would be a receipt
+    // for nothing. This route gets the same governed direct-write treatment
+    // refuse now has (writeRefusalRecord.ts) once Realignment C's tool
+    // gateway exists to actually back it -- not before.
     case "consequential_action":
       return {
         taskType: "conversational",
@@ -148,6 +158,9 @@ export function produceDeterministicRouteAnswer(intent: EloraStructuredIntent, r
       return `This looks like work for ${intent.proposedDelegationTarget ?? "a specialist"}, but I'm not yet able to hand off work through this path -- that capability is still being built. I've noted your request: "${intent.interpretedIntent}".${memorySuffix}`;
     case "durable_work":
       return `This looks like durable, multi-step work: "${intent.interpretedIntent}". I'm not yet able to create a tracked task for it through this conversational path -- that capability is still being built.${memorySuffix}`;
+    // Known, temporary gap -- see describeRouteForModel's consequential_action
+    // case above for why this stays acknowledgment-only (no AuthorityDecision/
+    // ActionReceipt) rather than getting refuse's governed direct-write treatment.
     case "consequential_action":
       return `This would involve a real external action: "${intent.interpretedIntent}". I'm not yet able to take actions with real side effects through this conversational path -- that capability is still being built.${memorySuffix}`;
     case "setup_required":
