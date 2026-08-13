@@ -1,83 +1,83 @@
 {
   "status": "passed",
-  "timestamp": "2026-08-11T11:42:57.080Z",
-  "tenant_id": "352e500f-bb83-4ce2-ac9f-fa5222725026",
-  "work_order_id": "6637ecd1-0290-4066-8b9a-73424ce65dbe",
+  "timestamp": "2026-08-11T02:55:01.801Z",
+  "tenant_id": "a500a9cf-dfbb-440f-8083-1ee56ad9569d",
+  "work_order_id": "82e154fc-3e1e-4f2e-8b6c-db3a3c574bfa",
   "final_status": "COMPLETED",
   "transitions": [
     {
       "from": null,
       "to": "RECEIVED",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "WorkOrder created",
-      "created_at": "2026-08-11T11:42:56.417Z"
+      "created_at": "2026-08-11T02:55:01.195Z"
     },
     {
       "from": "RECEIVED",
       "to": "INTENT_PARSED",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Structured task parse completed",
-      "created_at": "2026-08-11T11:42:56.442Z"
+      "created_at": "2026-08-11T02:55:01.216Z"
     },
     {
       "from": "INTENT_PARSED",
       "to": "AUTHORITY_CLASSIFIED",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Authority classification completed",
-      "created_at": "2026-08-11T11:42:56.453Z",
-      "authority_decision_id": "80006543-4f3d-4a44-9c89-21004b7eaeaf"
+      "created_at": "2026-08-11T02:55:01.229Z",
+      "authority_decision_id": "650afd83-4216-4eb4-90b6-02293966a6b7"
     },
     {
       "from": "AUTHORITY_CLASSIFIED",
       "to": "READY_TO_ACT",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Authority outcome permits immediate action",
-      "created_at": "2026-08-11T11:42:56.473Z"
+      "created_at": "2026-08-11T02:55:01.247Z"
     },
     {
       "from": "READY_TO_ACT",
       "to": "EXECUTING",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Run started",
-      "created_at": "2026-08-11T11:42:56.486Z",
-      "run_id": "124f6c2a-35d3-4f48-bbae-687b1a8d5056"
+      "created_at": "2026-08-11T02:55:01.261Z",
+      "run_id": "0f4e0e74-cf46-4175-bf96-ce3151477d51"
     },
     {
       "from": "EXECUTING",
       "to": "VALIDATING",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Execution complete, validating output",
-      "created_at": "2026-08-11T11:42:56.502Z"
+      "created_at": "2026-08-11T02:55:01.275Z"
     },
     {
       "from": "VALIDATING",
       "to": "RECEIPT_WRITTEN",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Validation complete, receipt recorded",
-      "created_at": "2026-08-11T11:42:56.525Z",
-      "action_receipt_id": "70dd0629-1477-478d-8da9-426aed10548c"
+      "created_at": "2026-08-11T02:55:01.294Z",
+      "action_receipt_id": "cb5df316-0bf4-4d89-af2c-72e440a35803"
     },
     {
       "from": "RECEIPT_WRITTEN",
       "to": "MEMORY_CANDIDATES_CREATED",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "Deriving a memory candidate from the receipt",
-      "created_at": "2026-08-11T11:42:56.555Z",
-      "memory_candidate_id": "25e7f0e8-f5ee-4458-b958-fb7e50209adb"
+      "created_at": "2026-08-11T02:55:01.321Z",
+      "memory_candidate_id": "844a1635-66bd-44e7-b4c4-201552302f45"
     },
     {
       "from": "MEMORY_CANDIDATES_CREATED",
       "to": "COMPLETED",
-      "actor_id": "49e7b913-8d73-4ed3-8f9b-e2416edfc753",
+      "actor_id": "40ae66e0-297d-4a42-beca-3907d3aa935e",
       "reason": "WorkOrder lifecycle complete",
-      "created_at": "2026-08-11T11:42:56.575Z"
+      "created_at": "2026-08-11T02:55:01.337Z"
     }
   ],
   "substantiating_records": {
-    "authority_decision_id": "80006543-4f3d-4a44-9c89-21004b7eaeaf",
-    "run_id": "124f6c2a-35d3-4f48-bbae-687b1a8d5056",
-    "action_receipt_id": "70dd0629-1477-478d-8da9-426aed10548c",
-    "memory_candidate_id": "25e7f0e8-f5ee-4458-b958-fb7e50209adb"
+    "authority_decision_id": "650afd83-4216-4eb4-90b6-02293966a6b7",
+    "run_id": "0f4e0e74-cf46-4175-bf96-ce3151477d51",
+    "action_receipt_id": "cb5df316-0bf4-4d89-af2c-72e440a35803",
+    "memory_candidate_id": "844a1635-66bd-44e7-b4c4-201552302f45"
   },
   "invalid_transition_test_result": "passed",
   "terminal_state_test_result": "passed",

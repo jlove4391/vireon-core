@@ -1,20 +1,20 @@
 {
   "status": "passed",
   "phase": "phase3_elora_v1",
-  "timestamp": "2026-08-11T11:43:01.422Z",
-  "tenant_id": "d9ad9df3-b3b1-4c3d-b877-9715846df69f",
-  "thread_id": "a17b8d25-06df-454b-9f9d-c1a1da2b9c3e",
-  "message_id": "df63eadc-c5ba-4257-abe5-25c77edd66e0",
+  "timestamp": "2026-08-11T02:55:04.535Z",
+  "tenant_id": "01e00cd2-b815-4e82-860e-fa8f9f5b8f61",
+  "thread_id": "d770301d-f9f2-4fd5-a967-a68c5804636b",
+  "message_id": "39a7f2dc-7865-4699-b9a1-dad05684f159",
   "retrieved_memory_count": 0,
   "route": "durable_work",
-  "work_order_id": "73bbceed-8a9a-407d-a65c-fd6fa7df7539",
-  "authority_decision_id": "b09ab51e-6144-4b79-81eb-d724b1c2f013",
+  "work_order_id": "d31b63b1-68de-4820-92d7-90973d952bd9",
+  "authority_decision_id": "3ce3020d-b649-4543-b408-3fb4f93ad825",
   "authority_outcome": "act_and_report",
   "final_work_order_status": "READY_TO_ACT",
   "response_type": "direct_answer",
-  "action_receipt_id": "c57ee390-52b4-41cb-865b-9115e5ecac62",
+  "action_receipt_id": "9086753c-98c9-49eb-833a-42aa3ba2ff20",
   "memory_candidate_ids": [
-    "476342ad-7c19-4192-919f-976631760864"
+    "bb3321e5-68d4-4c4f-abf7-6f073ced8b8f"
   ],
   "transition_path": [
     "RECEIVED",
