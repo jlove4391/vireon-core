@@ -33,7 +33,19 @@ function validResponseTextFor(params: { system?: Array<{ text?: string }>; messa
     return "A real, sane in-character reply.";
   }
   if (systemText.includes("structured intent classifier")) {
-    return JSON.stringify({ intentType: "informational", taskType: "unknown", confidence: 0.7, summary: "mocked summary" });
+    return JSON.stringify({
+      route: "converse",
+      interpretedIntent: "mocked interpretation",
+      confidence: 0.7,
+      taskDomain: null,
+      requestedCapabilities: [],
+      proposedDelegationTarget: null,
+      requiresDurableWork: false,
+      proposedToolNeeds: [],
+      externalSideEffect: false,
+      requiresClarification: false,
+      clarifyingQuestion: null,
+    });
   }
   if (systemText.includes("planning assistant")) {
     return JSON.stringify({ steps: [{ description: "mocked step" }] });
@@ -75,10 +87,17 @@ vi.mock("@anthropic-ai/sdk", () => {
         const textByScenario: Partial<Record<AnthropicMockScenario, string>> = {
           malformed: JSON.stringify({ totally: "wrong shape" }),
           smuggle: JSON.stringify({
-            intentType: "informational",
-            taskType: "unknown",
+            route: "converse",
+            interpretedIntent: "ok",
             confidence: 0.5,
-            summary: "ok",
+            taskDomain: null,
+            requestedCapabilities: [],
+            proposedDelegationTarget: null,
+            requiresDurableWork: false,
+            proposedToolNeeds: [],
+            externalSideEffect: false,
+            requiresClarification: false,
+            clarifyingQuestion: null,
             extraHackerField: "should not survive validation",
           }),
           "rerank-unknown": JSON.stringify({ rankedCandidates: [{ candidateId: "not-real", rank: 1 }] }),
@@ -135,10 +154,17 @@ const fakeProviders: ConformanceProviders = {
   smuggledFields: new FakeLlmProvider({
     interpretIntent: async () => ({
       output: {
-        intentType: "informational",
-        taskType: "unknown",
+        route: "converse",
+        interpretedIntent: "ok",
         confidence: 0.5,
-        summary: "ok",
+        taskDomain: null,
+        requestedCapabilities: [],
+        proposedDelegationTarget: null,
+        requiresDurableWork: false,
+        proposedToolNeeds: [],
+        externalSideEffect: false,
+        requiresClarification: false,
+        clarifyingQuestion: null,
         extraHackerField: "should not survive validation",
       },
       usage: { inputTokens: 1, outputTokens: 1 },

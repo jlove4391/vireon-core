@@ -267,6 +267,7 @@ describe("Phase 6C: Authority Resolution Engine acceptance", () => {
       content: "Please send an email to the team about the schedule.",
       sourceSurface: "phase6c-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     expect(result.authorityOutcome).toBe("act_and_report");

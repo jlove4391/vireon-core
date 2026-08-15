@@ -43,8 +43,8 @@ describe("PR 3: optional live OpenAI smoke test", () => {
       if (!result.ok) return;
 
       expect(result.source).toBe("MODEL");
-      expect(typeof result.value.intentType).toBe("string");
-      expect(typeof result.value.taskType).toBe("string");
+      expect(typeof result.value.route).toBe("string");
+      expect(typeof result.value.interpretedIntent).toBe("string");
 
       const row = await withTenantTransaction(ctx.tenantId, async (client) => {
         const r = await client.query("SELECT * FROM model_invocations WHERE id = $1", [result.invocationId]);

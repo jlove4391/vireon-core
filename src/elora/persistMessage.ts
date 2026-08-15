@@ -89,3 +89,33 @@ export async function persistMessage(input: PersistMessageInput): Promise<Persis
     return { threadId, messageId, content: input.content, isDuplicate: false };
   });
 }
+
+/**
+ * ADR 0008 §6: thread-context assembly (assembleThreadContext.ts) needs
+ * ELORA's own prior replies, not just the human's turns -- "Why did you
+ * recommend Postgres?" cannot resolve "you recommended Postgres" from
+ * user-role messages alone. Nothing before Realignment A ever persisted an
+ * assistant-role message; this closes that gap for the new conversational
+ * route path specifically. Deliberately not called from the WorkOrder-bypass
+ * pipeline (the artifact-creation pattern, or a system-trigger firing) --
+ * that pipeline's behavior is unchanged by this ADR, and its own responses
+ * are already durable via receipts.
+ */
+export async function persistAssistantReply(input: {
+  tenantId: string;
+  threadId: string;
+  actorId: string;
+  content: string;
+}): Promise<void> {
+  await withTenantTransaction(input.tenantId, async (client) => {
+    try {
+      await client.query(
+        `INSERT INTO messages (id, tenant_id, thread_id, actor_id, role, content, metadata, source_surface, source_correlation_id)
+         VALUES ($1, $2, $3, $4, 'assistant', $5, $6, NULL, NULL)`,
+        [randomUUID(), input.tenantId, input.threadId, input.actorId, input.content, JSON.stringify({})],
+      );
+    } catch (error) {
+      throw new EloraMessagePersistenceError(error instanceof Error ? error.message : String(error));
+    }
+  });
+}

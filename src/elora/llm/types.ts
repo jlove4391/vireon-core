@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { PersonaConfig } from "@vireon/persona-config";
 import type { AuthorityOutcome } from "../../shared/runtimeTypes.js";
 import type { WorkOrderStatus } from "../../state/workOrderState.js";
-import { ELORA_INTENT_TYPES, ELORA_TASK_TYPES } from "../types.js";
+import { ELORA_ROUTES } from "../types.js";
 
 export interface LlmResponseContext {
   /**
@@ -45,18 +45,36 @@ export interface LlmResponseContext {
 
 export const IntentInterpretationInputSchema = z.object({
   content: z.string().min(1),
+  /**
+   * ADR 0008 §6: bounded thread context (recent messages/summary/retrieved
+   * memory/current turn), assembled by Realignment A's thread-context
+   * helper. Optional and unused by this schema's shape today -- declared
+   * now so Realignment A's wiring slice doesn't need a second schema
+   * change to add it.
+   */
+  threadContext: z.string().optional(),
 });
 export type IntentInterpretationInput = z.infer<typeof IntentInterpretationInputSchema>;
 
-// Reuses EloraIntentType/EloraTaskType's own vocabulary (ELORA_INTENT_TYPES/
-// ELORA_TASK_TYPES, src/elora/types.ts) rather than redeclaring a parallel
-// enum -- this operation is a second, still-uncalled path alongside
-// parseIntent.ts, not a redefinition of what those categories mean.
+// ADR 0008 §2: reuses ELORA_ROUTES (src/elora/types.ts) rather than
+// redeclaring a parallel enum. The model proposes a route plus the richer
+// interpretation fields; resolveEloraRoute.ts's deterministic policy makes
+// the final routing decision (ELORA.md §19: no LLM output reaches the
+// database, or any safety-critical branch, unvalidated) -- same
+// model-proposes/code-decides split classifyAuthority.ts already
+// established for authority outcomes.
 export const IntentInterpretationOutputSchema = z.object({
-  intentType: z.enum(ELORA_INTENT_TYPES),
-  taskType: z.enum(ELORA_TASK_TYPES),
+  route: z.enum(ELORA_ROUTES),
+  interpretedIntent: z.string().min(1),
   confidence: z.number().min(0).max(1),
-  summary: z.string().min(1),
+  taskDomain: z.string().nullable(),
+  requestedCapabilities: z.array(z.string()),
+  proposedDelegationTarget: z.string().nullable(),
+  requiresDurableWork: z.boolean(),
+  proposedToolNeeds: z.array(z.string()),
+  externalSideEffect: z.boolean(),
+  requiresClarification: z.boolean(),
+  clarifyingQuestion: z.string().nullable(),
 });
 export type IntentInterpretationOutput = z.infer<typeof IntentInterpretationOutputSchema>;
 

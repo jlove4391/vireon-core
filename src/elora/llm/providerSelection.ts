@@ -55,3 +55,20 @@ export function readProviderKindFromEnv(): ProviderKind {
   }
   return raw;
 }
+
+/**
+ * ADR 0008 Realignment A: extracted from runInformationalCognitiveRun.ts's
+ * former module-private helper of the same name so resolveEloraRoute.ts's
+ * routing-model call and the generalized conversational run's
+ * response-synthesis call share one provider-selection path, not two
+ * independently-reimplemented copies. Throws exactly when selectLlmProvider()
+ * does (fail-closed, no fallback) -- callers catch this to enter ADR 0008
+ * §3's degraded-routing mode.
+ */
+export function selectConfiguredProviderFromEnv(): LlmProvider {
+  const providerKind = readProviderKindFromEnv();
+  return selectLlmProvider(providerKind, {
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    openaiApiKey: process.env.OPENAI_API_KEY,
+  });
+}

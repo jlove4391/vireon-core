@@ -34,5 +34,6 @@ export function normalizeIngress(input: EloraIngressInput): NormalizedEloraIngre
     content,
     sourceSurface: input.sourceSurface?.trim() || null,
     sourceCorrelationId: input.sourceCorrelationId?.trim() || null,
+    isSystemInitiated: input.isSystemInitiated ?? false,
   };
 }

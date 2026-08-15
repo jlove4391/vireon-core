@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { ELORA_INTENT_TYPES, ELORA_TASK_TYPES } from "../types.js";
+import { ELORA_ROUTES } from "../types.js";
 import { buildPrompt } from "./anthropicProvider.js";
 import { ModelOperationIncompleteOutputError, ModelOperationRefusalError } from "./errors.js";
 import type {
@@ -59,12 +59,31 @@ type JsonSchema = Record<string, unknown>;
 const INTENT_INTERPRETATION_SCHEMA: JsonSchema = {
   type: "object",
   properties: {
-    intentType: { type: "string", enum: [...ELORA_INTENT_TYPES] },
-    taskType: { type: "string", enum: [...ELORA_TASK_TYPES] },
+    route: { type: "string", enum: [...ELORA_ROUTES] },
+    interpretedIntent: { type: "string" },
     confidence: { type: "number" },
-    summary: { type: "string" },
+    taskDomain: { type: ["string", "null"] },
+    requestedCapabilities: { type: "array", items: { type: "string" } },
+    proposedDelegationTarget: { type: ["string", "null"] },
+    requiresDurableWork: { type: "boolean" },
+    proposedToolNeeds: { type: "array", items: { type: "string" } },
+    externalSideEffect: { type: "boolean" },
+    requiresClarification: { type: "boolean" },
+    clarifyingQuestion: { type: ["string", "null"] },
   },
-  required: ["intentType", "taskType", "confidence", "summary"],
+  required: [
+    "route",
+    "interpretedIntent",
+    "confidence",
+    "taskDomain",
+    "requestedCapabilities",
+    "proposedDelegationTarget",
+    "requiresDurableWork",
+    "proposedToolNeeds",
+    "externalSideEffect",
+    "requiresClarification",
+    "clarifyingQuestion",
+  ],
   additionalProperties: false,
 };
 
@@ -299,10 +318,12 @@ export class OpenAIProvider implements LlmProvider {
   async interpretIntent(input: IntentInterpretationInput, timeoutMs: number): Promise<ProviderOperationCallResult> {
     const client = buildClient(this.apiKey, timeoutMs);
     const developerPrompt = [
-      "You are a structured intent classifier for an internal task-routing system.",
-      `intentType and taskType must each be exactly one of the schema's enumerated values.`,
+      "You are ELORA's conversational router: a structured intent classifier that proposes a route for an internal task-routing system. You do not decide the final route yourself -- deterministic code validates and may override your proposal, especially for safety-critical cases.",
+      `route must be exactly one of the schema's enumerated values. Prefer "converse"/"direct_answer"/"clarify" for ordinary conversation and questions -- reserve "durable_work"/"delegate"/"consequential_action" for requests that genuinely describe multi-step tracked work, handing work to another specialist, or a real external side effect.`,
     ].join("\n");
-    const userPrompt = `Classify this request:\n"${input.content}"`;
+    const userPrompt = input.threadContext
+      ? `Thread context:\n${input.threadContext}\n\nClassify this request:\n"${input.content}"`
+      : `Classify this request:\n"${input.content}"`;
     return callStructuredOperation(client, "intent_interpretation", developerPrompt, userPrompt, "intent_interpretation", INTENT_INTERPRETATION_SCHEMA, timeoutMs);
   }
 

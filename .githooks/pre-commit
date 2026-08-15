@@ -1,0 +1,5 @@
+#!/bin/sh
+# See scripts/checkCoreRecordsDiff.ts for what this checks and why.
+# Wired up via `git config core.hooksPath .githooks` -- package.json's
+# "prepare" script sets this automatically on `pnpm install`.
+pnpm exec tsx scripts/checkCoreRecordsDiff.ts

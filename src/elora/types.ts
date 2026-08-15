@@ -12,9 +12,22 @@ export interface EloraIngressInput {
   content: string;
   sourceSurface?: string | null;
   sourceCorrelationId?: string | null;
+  /**
+   * ADR 0008 Realignment A: true only when this call originates from
+   * fireDueTrigger() (a scheduled trigger firing), never from a live user
+   * turn. A scheduled trigger is pre-authorized background work --
+   * createScheduledTrigger.ts already runs its own resolveAuthorityWithHierarchy()
+   * at creation time -- fundamentally different in kind from an ad-hoc
+   * conversational message, even when its synthetic content happens to
+   * read the same way. This is the one flag resolveEloraRoute.ts's routing
+   * policy consults to decide whether a durable_work route creates a real
+   * WorkOrder (system-initiated) or gets honest acknowledgment only
+   * (ordinary user turn) -- see that module's own doc comment.
+   */
+  isSystemInitiated?: boolean;
 }
 
-/** EloraIngressInput after normalizeIngress.ts -- no DB access, all optional fields resolved to null. */
+/** EloraIngressInput after normalizeIngress.ts -- no DB access, all optional fields resolved to null/false. */
 export interface NormalizedEloraIngress {
   tenantId: string;
   workspaceId: string | null;
@@ -24,34 +37,36 @@ export interface NormalizedEloraIngress {
   content: string;
   sourceSurface: string | null;
   sourceCorrelationId: string | null;
+  isSystemInitiated: boolean;
 }
 
 /**
- * task_type is the concrete work category. intent_type classifies the
- * shape of the request. Per Phase 3 §5.1/§19: setup_required,
- * clarification_required, capability_missing, and refusal_required are
- * declared intent_type surface for future phases -- authority
- * classification (classifyAuthority.ts) is the sole owner of those
- * branches in Phase 3. parseIntent.ts only ever emits work_order_candidate
- * or informational.
+ * ADR 0008 §2: the route taxonomy that replaces the old binary
+ * work_order_candidate/informational split (and the declared-but-unused
+ * ELORA_INTENT_TYPES superset it was drawn from). Declared as a const array
+ * so src/elora/llm/types.ts can build a real Zod enum
+ * (z.enum(ELORA_ROUTES)) reusing this exact vocabulary, rather than
+ * redeclaring a parallel list that could drift from this one.
  *
- * Declared as const arrays (not just a type union) so PR 2's
- * src/elora/llm/types.ts can build a real Zod enum
- * (z.enum(ELORA_INTENT_TYPES)) reusing this exact vocabulary for its
- * intent-interpretation operation, rather than redeclaring a parallel list
- * that could drift from this one. EloraIntentType/EloraTaskType are
- * unchanged in shape or value -- now derived from these arrays instead of
- * a hand-written union, purely a refactor.
+ * memory_candidate_source from the legacy taxonomy is deliberately NOT a
+ * route here -- ADR 0008 §2 treats memory candidacy as cross-cutting
+ * metadata on a turn, not a destination for it. That stays out of scope
+ * for Realignment A (no route currently produces a memory candidate
+ * outside the still-unchanged WorkOrder-bypass paths).
  */
-export const ELORA_INTENT_TYPES = [
-  "work_order_candidate",
-  "informational",
-  "clarification_required",
+export const ELORA_ROUTES = [
+  "converse",
+  "direct_answer",
+  "tool_assisted",
+  "delegate",
+  "durable_work",
+  "consequential_action",
+  "clarify",
   "setup_required",
   "capability_missing",
-  "refusal_required",
+  "refuse",
 ] as const;
-export type EloraIntentType = (typeof ELORA_INTENT_TYPES)[number];
+export type EloraRoute = (typeof ELORA_ROUTES)[number];
 
 export const ELORA_TASK_TYPES = [
   "planning",
@@ -64,11 +79,44 @@ export const ELORA_TASK_TYPES = [
 ] as const;
 export type EloraTaskType = (typeof ELORA_TASK_TYPES)[number];
 
+/**
+ * ADR 0008 Realignment A: redesigned around `route` (§2) in place of the
+ * old `intent_type` -- that field's six-value vocabulary didn't map cleanly
+ * onto the new ten-way route taxonomy, so this is a genuine replacement,
+ * not a parallel field bolted on next to the old one.
+ *
+ * task_type/summary/artifactRequest are retained from the pre-ADR-0008
+ * shape and stay required/always-populated -- not because the new
+ * route-based path uses them, but because they remain load-bearing for the
+ * two deterministic bypass paths that still reuse the existing WorkOrder/
+ * tool pipeline entirely unchanged (the explicit local-Markdown-artifact
+ * pattern, and a system-trigger-initiated durable_work firing):
+ * dispatchTool.ts, createWorkOrder.ts's taskType/interpretedIntent params,
+ * proposeMemoryCandidates.ts, and produceDirectAnswer.ts all still read
+ * them by these exact names. On the ordinary conversational route path
+ * they're populated with sensible defaults ("unknown" / a truncated copy
+ * of interpretedIntent) that nothing downstream reads.
+ */
 export interface EloraStructuredIntent {
-  intent_type: EloraIntentType;
-  task_type: EloraTaskType;
+  route: EloraRoute;
+  /** The model's (or the degraded-mode classifier's) own natural-language restatement of what it understood -- ADR 0008 §2's "interpreted intent" field. */
+  interpretedIntent: string;
   confidence: number;
+  /** e.g. "engineering", "general" -- null when no specific domain applies. */
+  taskDomain: string | null;
+  /** Empty in Realignment A -- no tools are exposed to the routing model yet (Tool Stage 0/1 is Realignment C's scope). */
+  requestedCapabilities: string[];
+  /** Set only on route === "delegate" -- e.g. "nexora". */
+  proposedDelegationTarget: string | null;
+  requiresDurableWork: boolean;
+  /** Empty in Realignment A, same reason as requestedCapabilities. */
+  proposedToolNeeds: string[];
+  externalSideEffect: boolean;
   requires_clarification: boolean;
+  /** Set only when requires_clarification is true. */
+  clarifyingQuestion: string | null;
+
+  task_type: EloraTaskType;
   summary: string;
   /** Set only when task_type === "artifact_creation" (Phase 5 §10) -- structured extraction, not general NLU. */
   artifactRequest?: { filename: string; content: string };
@@ -134,15 +182,29 @@ export interface EloraIngestionResult {
   retrievedMemoryCount: number;
   retrievedMemoryIds: string[];
   workOrderId: string | null;
+  /**
+   * ADR 0008 Realignment A follow-up: also set on a conversational refuse
+   * (route === "refuse", no WorkOrder involved) -- writeRefusalRecord.ts
+   * writes a real AuthorityDecision directly. Otherwise unchanged: set on
+   * the four WorkOrder-pipeline blocked branches (Phase 4 §4.2/§7).
+   */
   authorityDecisionId: string | null;
+  /** Same refuse exception as authorityDecisionId above -- "refuse" here never implies a WorkOrder existed. */
   authorityOutcome: AuthorityOutcome | null;
+  /** Unlike authorityDecisionId/blockedReceiptId, this stays null on a conversational refuse -- there is no WorkOrder to report a status for, refused or otherwise. */
   finalWorkOrderStatus: WorkOrderStatus | null;
   transitionPath: WorkOrderStatus[];
   responseType: EloraResponseType;
   responseText: string;
   /** elora_ingestion_completed receipt id -- only set on the non-execution READY_TO_ACT happy path (Phase 3, unchanged). */
   actionReceiptId: string | null;
-  /** elora_request_blocked receipt id -- only set on the four blocked branches (Phase 4 §4.2/§7). */
+  /**
+   * elora_request_blocked receipt id -- set on the four WorkOrder-pipeline
+   * blocked branches (Phase 4 §4.2/§7), AND on a conversational refuse
+   * (ADR 0008 Realignment A follow-up: writeRefusalRecord.ts writes this
+   * directly, with a null payload.work_order_id -- see that receipt type's
+   * schema comment in actionReceipt.ts).
+   */
   blockedReceiptId: string | null;
   /** Phase 5 §8: set only when a registered tool was actually invoked through the gateway. */
   toolInvocationId: string | null;

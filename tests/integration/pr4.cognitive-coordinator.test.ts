@@ -6,11 +6,12 @@ import { pool } from "../../src/db/pool.js";
 import { withTenantTransaction } from "../../src/db/withTenantTransaction.js";
 import { createCognitiveRun } from "../../src/cognition/createCognitiveRun.js";
 import { CognitiveRunCompletionUnsubstantiatedError } from "../../src/cognition/errors.js";
-import { runInformationalCognitiveRun } from "../../src/cognition/runInformationalCognitiveRun.js";
+import { runConversationalCognitiveRun } from "../../src/cognition/runConversationalCognitiveRun.js";
 import { transitionCognitiveRun } from "../../src/cognition/transitionCognitiveRun.js";
 import { ingestUserMessage } from "../../src/elora/ingestUserMessage.js";
 import { buildPrompt } from "../../src/elora/llm/anthropicProvider.js";
 import type { LlmResponseContext } from "../../src/elora/llm/types.js";
+import { parseIntentDegraded } from "../../src/elora/parseIntent.js";
 import { seedBaseContext } from "../../test-utils/dbTestContext.js";
 import { seedMemoryRecord } from "../shared/seedMemoryRecord.js";
 
@@ -181,7 +182,7 @@ describe("PR 4: cognitive coordinator acceptance", () => {
       sourceCorrelationId: randomUUID(),
     });
 
-    expect(result.intent.intent_type).toBe("informational");
+    expect(result.intent.route).toBe("converse");
     expect(result.workOrderId).toBeNull();
     expect(result.authorityDecisionId).toBeNull();
     expect(result.finalWorkOrderStatus).toBeNull();
@@ -191,7 +192,7 @@ describe("PR 4: cognitive coordinator acceptance", () => {
     expect(result.responseText).toBe(providerMockState.anthropic.responseText);
 
     const run = await fetchCognitiveRun(ctx.tenantId, result.cognitiveRunId!);
-    expect(run.objective_kind).toBe("informational_response");
+    expect(run.objective_kind).toBe("conversational_turn");
     expect(run.status).toBe("COMPLETED");
 
     const transitions = await fetchTransitionPath(ctx.tenantId, result.cognitiveRunId!);
@@ -291,7 +292,7 @@ describe("PR 4: cognitive coordinator acceptance", () => {
       threadId: ctx.threadId,
       messageId: ctx.messageId,
       initiatedByActorId: ctx.actorId,
-      objectiveKind: "informational_response",
+      objectiveKind: "conversational_turn",
     });
     expect(cognitiveRun.status).toBe("PENDING");
 
@@ -311,13 +312,15 @@ describe("PR 4: cognitive coordinator acceptance", () => {
       );
     });
 
-    const result = await runInformationalCognitiveRun({
+    const content = "Anything on the vendor renewal timeline?";
+    const result = await runConversationalCognitiveRun({
       tenantId: ctx.tenantId,
       threadId: ctx.threadId,
       messageId: ctx.messageId,
       initiatedByActorId: ctx.actorId,
-      userMessageContent: "Anything on the vendor renewal timeline?",
+      userMessageContent: content,
       retrievedMemory: [],
+      intent: parseIntentDegraded(content),
     });
 
     expect(result.finalStatus).toBe("FAILED");
@@ -353,7 +356,7 @@ describe("PR 4: cognitive coordinator acceptance", () => {
       content: sensitiveContent,
     });
 
-    expect(result.intent.intent_type).toBe("informational");
+    expect(result.intent.route).toBe("converse");
     expect(result.responseType).toBe("clarification_required");
     expect(result.responseText).toBe(ABSOLUTE_FALLBACK_TEXT);
     expect(result.modelInvocationId).toBeNull();
@@ -458,7 +461,7 @@ describe("PR 4: cognitive coordinator acceptance", () => {
       content: "Any update on the office relocation plans?",
     });
 
-    expect(result.intent.intent_type).toBe("informational");
+    expect(result.intent.route).toBe("converse");
     // Genuinely a direct answer, not a clarification request -- the
     // response is a real DETERMINISTIC_FALLBACK answer, even though the
     // cognitive run's own bookkeeping status is FAILED (§4.1's completion
@@ -480,7 +483,27 @@ describe("PR 4: cognitive coordinator acceptance", () => {
     expect(run.ended_at).not.toBeNull();
   });
 
-  it("13.9: the work_order_candidate path is unchanged -- no cognitive run is created for it", async () => {
+  it("13.9: the WorkOrder pipeline (now reached only via isSystemInitiated) is unchanged -- no cognitive run is created for it", async () => {
+    const ctx = await seedBaseContext();
+    const result = await ingestUserMessage({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      projectId: ctx.projectId,
+      threadId: ctx.threadId,
+      actorId: ctx.actorId,
+      content: "Help me create a project plan for the Q3 rollout",
+      isSystemInitiated: true,
+    });
+
+    expect(result.intent.route).toBe("durable_work");
+    expect(result.workOrderId).not.toBeNull();
+    expect(result.cognitiveRunId).toBeNull();
+    expect(result.modelInvocationId).toBeNull();
+
+    expect(await countCognitiveRuns(ctx.tenantId)).toBe(0);
+  });
+
+  it("ADR 0008: the exact same content, WITHOUT isSystemInitiated, gets the conversational path instead -- no WorkOrder, a real cognitive run", async () => {
     const ctx = await seedBaseContext();
     const result = await ingestUserMessage({
       tenantId: ctx.tenantId,
@@ -491,12 +514,9 @@ describe("PR 4: cognitive coordinator acceptance", () => {
       content: "Help me create a project plan for the Q3 rollout",
     });
 
-    expect(result.intent.intent_type).toBe("work_order_candidate");
-    expect(result.workOrderId).not.toBeNull();
-    expect(result.cognitiveRunId).toBeNull();
-    expect(result.modelInvocationId).toBeNull();
-
-    expect(await countCognitiveRuns(ctx.tenantId)).toBe(0);
+    expect(result.intent.route).toBe("converse");
+    expect(result.workOrderId).toBeNull();
+    expect(result.cognitiveRunId).not.toBeNull();
   });
 
   describe("13.11: prompt correctness for optional authorityOutcome/finalWorkOrderStatus", () => {

@@ -671,6 +671,7 @@ describe("Phase 5: tool registry v1 acceptance", () => {
       content: "Help me create a project plan for Q3 initiatives.",
       sourceSurface: "phase5-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
     expect(result.finalWorkOrderStatus).toBe("READY_TO_ACT");
 

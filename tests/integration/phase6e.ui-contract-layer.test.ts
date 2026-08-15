@@ -89,6 +89,7 @@ describe("Phase 6E: Stable UI-Facing Contract Layer acceptance", () => {
       content: "Send an email to the team and deploy this to production.",
       sourceSurface: "phase6e-test-harness",
       sourceCorrelationId: randomUUID(),
+      isSystemInitiated: true,
     });
 
     const response = toEloraMessageResponse(result);

@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:phase1": "vitest run tests/integration/phase1.database-spine.test.ts",
