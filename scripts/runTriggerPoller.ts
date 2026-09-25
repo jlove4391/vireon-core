@@ -1,6 +1,13 @@
 import "dotenv/config";
 import { pollAllTenantsOnce } from "../src/elora/triggers/fireDueTriggers.js";
 import { createRedisClient } from "../src/redis/client.js";
+import {
+  registerTracingShutdownHooks,
+  startTracing,
+} from "../src/telemetry/tracing.js";
+
+startTracing();
+registerTracingShutdownHooks();
 
 // Ground-zero runner (core-runtime.md §3): a simple, inspectable
 // synchronous loop, same "prefer simple local routing" posture as
