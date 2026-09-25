@@ -121,10 +121,12 @@ jobs:
           cat /tmp/vireon-server.log
           cat /tmp/backend-response.json
           test "$STATUS" = "200"
+          # NodeSDK wraps the exporter in a BatchSpanProcessor; keep the normal
+          # server alive long enough for its ordinary batch cycle to export.
+          sleep 7
 
       - name: Verify normal-runtime OTLP export reached Phoenix
         run: |
-          sleep 2
           docker compose --profile observability logs --no-color phoenix > /tmp/phoenix.log
           tail -n 250 /tmp/phoenix.log
           grep -Ei 'POST[[:space:]]+/v1/traces([^[:alnum:]_/-]|$).*\b(200|204)\b|/v1/traces.*\b(200|204)\b' /tmp/phoenix.log
@@ -152,6 +154,7 @@ jobs:
           test "${STATUS:-124}" = "124"
 
       - name: Final repository cleanliness
+        if: always()
         run: |
           STATUS=$(git status --porcelain)
           printf '%s\n' "$STATUS"
