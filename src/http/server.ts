@@ -2,6 +2,13 @@ import "dotenv/config";
 import express from "express";
 import { briefingsRouter } from "./routes/briefings.js";
 import { eloraMessagesRouter } from "./routes/eloraMessages.js";
+import {
+  registerTracingShutdownHooks,
+  startTracing,
+} from "../telemetry/tracing.js";
+
+startTracing();
+registerTracingShutdownHooks();
 
 // Phase 6A §7: one dev-only HTTP server. No auth beyond the dev-identity
 // placeholder (§6). Not intended to be deployed as-is.
