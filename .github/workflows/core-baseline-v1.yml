@@ -1,0 +1,147 @@
+name: CORE Baseline v1
+
+on:
+  push:
+    branches:
+      - stabilization/core-baseline-v1-tracing
+  workflow_dispatch:
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgres://vireon:vireon@localhost:5432/vireon_core
+      REDIS_URL: redis://localhost:6379
+      PGVECTOR_DIMENSIONS: "1536"
+      MODEL_PROVIDER: anthropic
+      MEMORY_RETRIEVAL_STRATEGY: deterministic
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:6006/v1/traces
+      OTEL_SERVICE_NAME: vireon-core-baseline
+      OTEL_CAPTURE_CONTENT: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record starting point
+        run: |
+          git rev-parse HEAD
+          git status --porcelain
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Enable pnpm 9.15.0
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.0 --activate
+          node --version
+          pnpm --version
+          docker --version
+          docker compose version
+
+      - name: Install dependencies without lockfile changes
+        run: pnpm install --frozen-lockfile
+
+      - name: Start PostgreSQL and Redis
+        run: |
+          docker compose up -d postgres redis
+          for i in {1..30}; do
+            PG_STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q postgres) 2>/dev/null || true)
+            REDIS_STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q redis) 2>/dev/null || true)
+            echo "postgres=$PG_STATUS redis=$REDIS_STATUS"
+            if [ "$PG_STATUS" = healthy ] && [ "$REDIS_STATUS" = healthy ]; then exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          exit 1
+
+      - name: Prove empty database before migrations
+        run: |
+          COUNT=$(docker compose exec -T postgres psql -U postgres_bootstrap -d vireon_core -Atc "select count(*) from information_schema.tables where table_schema='public';")
+          echo "public_tables_before_migration=$COUNT"
+          test "$COUNT" = "0"
+
+      - name: Apply migrations 0001 through 0018
+        run: pnpm db:migrate
+
+      - name: Verify migration ledger and pgvector
+        run: |
+          docker compose exec -T postgres psql -U postgres_bootstrap -d vireon_core -c "select extname from pg_extension where extname='vector';"
+          docker compose exec -T postgres psql -U postgres_bootstrap -d vireon_core -c "select * from schema_migrations order by version;" || true
+
+      - name: Redis connectivity test
+        run: pnpm test:phase1:redis
+
+      - name: Root typecheck
+        run: pnpm typecheck
+
+      - name: Root test suite
+        run: pnpm test
+
+      - name: Web typecheck
+        run: pnpm --filter @vireon/web typecheck
+
+      - name: Web production build
+        run: pnpm --filter @vireon/web build
+
+      - name: Observability integration test
+        run: pnpm test:pr0-observability
+
+      - name: Backend runtime smoke
+        run: |
+          pnpm dev:server > /tmp/vireon-server.log 2>&1 &
+          PID=$!
+          trap 'kill $PID || true' EXIT
+          for i in {1..20}; do
+            if curl -s -o /tmp/backend-response -w '%{http_code}' http://localhost:4300/ | grep -Eq '^(200|404)$'; then
+              cat /tmp/vireon-server.log
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/vireon-server.log
+          exit 1
+
+      - name: Web runtime smoke
+        run: |
+          pnpm --filter @vireon/web dev --host 127.0.0.1 > /tmp/vireon-web.log 2>&1 &
+          PID=$!
+          trap 'kill $PID || true' EXIT
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:5173/ >/tmp/web-response; then
+              cat /tmp/vireon-web.log
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/vireon-web.log
+          exit 1
+
+      - name: Trigger poller runtime smoke
+        run: |
+          timeout 8s pnpm dev:trigger-poller > /tmp/vireon-poller.log 2>&1 || STATUS=$?
+          cat /tmp/vireon-poller.log
+          grep -q "Trigger poller started" /tmp/vireon-poller.log
+          test "${STATUS:-124}" = "124"
+
+      - name: Start Phoenix observability profile
+        run: |
+          docker compose --profile observability up -d phoenix
+          for i in {1..30}; do
+            if curl -fsS http://localhost:6006/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker compose --profile observability ps
+          exit 1
+
+      - name: Final repository cleanliness
+        run: git status --porcelain
+
+      - name: Container diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --profile observability ps || true
+          docker compose --profile observability logs --no-color --tail=200 || true
