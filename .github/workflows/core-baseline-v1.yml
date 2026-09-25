@@ -69,7 +69,12 @@ jobs:
       - name: Verify migration ledger and pgvector
         run: |
           docker compose exec -T postgres psql -U postgres_bootstrap -d vireon_core -c "select extname from pg_extension where extname='vector';"
-          docker compose exec -T postgres psql -U postgres_bootstrap -d vireon_core -c "select * from schema_migrations order by version;" || true
+          docker compose exec -T postgres psql -U postgres_bootstrap -d vireon_core -c "select filename, applied_at from schema_migrations order by filename;"
+
+      - name: Complete repository dev setup
+        run: |
+          pnpm seed:dev-identity
+          grep '^VIREON_DEV_' .env >> "$GITHUB_ENV"
 
       - name: Redis connectivity test
         run: pnpm test:phase1:redis
@@ -89,20 +94,41 @@ jobs:
       - name: Observability integration test
         run: pnpm test:pr0-observability
 
-      - name: Backend runtime smoke
+      - name: Start Phoenix observability profile
+        run: |
+          docker compose --profile observability up -d phoenix
+          for i in {1..30}; do
+            if curl -fsS http://localhost:6006/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker compose --profile observability ps
+          exit 1
+
+      - name: Backend functional runtime smoke
         run: |
           pnpm dev:server > /tmp/vireon-server.log 2>&1 &
           PID=$!
-          trap 'kill $PID || true' EXIT
+          cleanup() { kill -TERM "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
           for i in {1..20}; do
-            if curl -s -o /tmp/backend-response -w '%{http_code}' http://localhost:4300/ | grep -Eq '^(200|404)$'; then
-              cat /tmp/vireon-server.log
-              exit 0
-            fi
+            if curl -s -o /dev/null http://localhost:4300/; then break; fi
             sleep 1
           done
+          STATUS=$(curl -sS -o /tmp/backend-response.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d '{"content":"CORE Baseline v1 runtime probe","clientRequestId":"00000000-0000-4000-8000-000000000001"}' \
+            http://localhost:4300/api/elora/messages)
           cat /tmp/vireon-server.log
-          exit 1
+          cat /tmp/backend-response.json
+          test "$STATUS" = "200"
+
+      - name: Verify normal-runtime trace reached Phoenix
+        run: |
+          sleep 2
+          curl -fsS 'http://localhost:6006/v1/traces?limit=20' -o /tmp/phoenix-traces.json
+          cat /tmp/phoenix-traces.json
+          test -s /tmp/phoenix-traces.json
+          ! grep -Eq '^\{[[:space:]]*"data"[[:space:]]*:[[:space:]]*\[\][[:space:]]*\}$' /tmp/phoenix-traces.json
 
       - name: Web runtime smoke
         run: |
@@ -125,16 +151,6 @@ jobs:
           cat /tmp/vireon-poller.log
           grep -q "Trigger poller started" /tmp/vireon-poller.log
           test "${STATUS:-124}" = "124"
-
-      - name: Start Phoenix observability profile
-        run: |
-          docker compose --profile observability up -d phoenix
-          for i in {1..30}; do
-            if curl -fsS http://localhost:6006/ >/dev/null; then exit 0; fi
-            sleep 2
-          done
-          docker compose --profile observability ps
-          exit 1
 
       - name: Final repository cleanliness
         run: git status --porcelain
