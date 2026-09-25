@@ -122,13 +122,12 @@ jobs:
           cat /tmp/backend-response.json
           test "$STATUS" = "200"
 
-      - name: Verify normal-runtime trace reached Phoenix
+      - name: Verify normal-runtime OTLP export reached Phoenix
         run: |
           sleep 2
-          curl -fsS 'http://localhost:6006/v1/traces?limit=20' -o /tmp/phoenix-traces.json
-          cat /tmp/phoenix-traces.json
-          test -s /tmp/phoenix-traces.json
-          ! grep -Eq '^\{[[:space:]]*"data"[[:space:]]*:[[:space:]]*\[\][[:space:]]*\}$' /tmp/phoenix-traces.json
+          docker compose --profile observability logs --no-color phoenix > /tmp/phoenix.log
+          tail -n 250 /tmp/phoenix.log
+          grep -Ei 'POST[[:space:]]+/v1/traces([^[:alnum:]_/-]|$).*\b(200|204)\b|/v1/traces.*\b(200|204)\b' /tmp/phoenix.log
 
       - name: Web runtime smoke
         run: |
@@ -153,7 +152,14 @@ jobs:
           test "${STATUS:-124}" = "124"
 
       - name: Final repository cleanliness
-        run: git status --porcelain
+        run: |
+          STATUS=$(git status --porcelain)
+          printf '%s\n' "$STATUS"
+          if [ -n "$STATUS" ]; then
+            git diff -- core-records || true
+            echo "Tracked or untracked working-tree changes remain after baseline verification."
+            exit 1
+          fi
 
       - name: Container diagnostics on failure
         if: failure()
